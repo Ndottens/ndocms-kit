@@ -1,0 +1,92 @@
+---
+import type { SiteConfig } from '../lib/site-config';
+
+// Shared <head>/SEO layout. The site passes its own `site` config (from
+// src/site.ts) and injects per-site design (tokens.css import, font links)
+// via its thin SiteLayout wrapper and the named "head" slot.
+
+interface Props {
+    site: SiteConfig;
+    title: string;
+    description?: string;
+    type?: 'website' | 'article';
+    noindex?: boolean;
+    // Page-specific structured data (e.g. BlogPosting, BreadcrumbList). The
+    // site-level Organization/WebSite is always added below.
+    jsonLd?: object | object[];
+}
+
+const { site, title, description, type = 'website', noindex = false, jsonLd } = Astro.props;
+
+const desc = description ?? site.description;
+const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : Astro.url.pathname;
+const lang = site.locale.split('_')[0] || 'nl';
+const logo = site.logo && Astro.site ? new URL(site.logo, Astro.site).href : undefined;
+
+// Site-level structured data. Becomes a LocalBusiness (or subtype) when `business`
+// is filled in site.ts — otherwise a plain Organization.
+const b = site.business;
+const organization: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': b?.type ?? 'Organization',
+    name: site.name,
+    ...(Astro.site ? { url: Astro.site.href } : {}),
+    ...(logo ? { logo } : {}),
+    ...(b?.telephone ? { telephone: b.telephone } : {}),
+    ...(b?.email ? { email: b.email } : {}),
+    ...(b?.priceRange ? { priceRange: b.priceRange } : {}),
+    ...(b?.sameAs?.length ? { sameAs: b.sameAs } : {}),
+    ...(b?.openingHours?.length ? { openingHours: b.openingHours } : {}),
+    ...(b?.address
+        ? {
+              address: {
+                  '@type': 'PostalAddress',
+                  streetAddress: b.address.street,
+                  postalCode: b.address.postalCode,
+                  addressLocality: b.address.city,
+                  addressCountry: b.address.country,
+              },
+          }
+        : {}),
+    ...(b?.geo ? { geo: { '@type': 'GeoCoordinates', latitude: b.geo.lat, longitude: b.geo.lng } } : {}),
+};
+const website = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: site.name,
+    ...(Astro.site ? { url: Astro.site.href } : {}),
+};
+const graph = [organization, website, ...(jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [])];
+---
+
+<!doctype html>
+<html lang={lang} class="scroll-smooth">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{title}</title>
+        <meta name="description" content={desc} />
+        <link rel="canonical" href={canonical} />
+        {noindex && <meta name="robots" content="noindex, nofollow" />}
+
+        <meta property="og:type" content={type} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={desc} />
+        <meta property="og:url" content={canonical} />
+        <meta property="og:site_name" content={site.name} />
+        <meta property="og:locale" content={site.locale} />
+
+        <meta name="twitter:card" content="summary" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={desc} />
+
+        <link rel="sitemap" href="/sitemap-index.xml" />
+
+        <slot name="head" />
+
+        <script type="application/ld+json" set:html={JSON.stringify(graph)} is:inline />
+    </head>
+    <body>
+        <slot />
+    </body>
+</html>

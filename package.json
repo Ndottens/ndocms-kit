@@ -1,0 +1,15 @@
+{
+    "name": "ndocms-kit",
+    "version": "1.0.0",
+    "description": "Shared plumbing for NdoCMS client sites (Astro): delivery/snapshots, forms, booking widget, SEO layout, slice-zone mechanics.",
+    "type": "module",
+    "license": "UNLICENSED",
+    "exports": {
+        "./lib/*": "./src/lib/*.ts",
+        "./components/*.astro": "./src/components/*.astro",
+        "./layouts/*.astro": "./src/layouts/*.astro"
+    },
+    "peerDependencies": {
+        "astro": "^5.0.0"
+    }
+}

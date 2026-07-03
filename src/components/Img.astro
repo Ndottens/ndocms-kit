@@ -1,0 +1,24 @@
+---
+// Standard image render. Always emits width/height so the browser reserves space
+// and the page doesn't shift while loading (good CLS). Above-the-fold images
+// (hero) should pass loading="eager"; everything else stays lazy.
+import type { ImageValue } from '../lib/types';
+
+interface Props {
+    image: ImageValue;
+    class?: string;
+    loading?: 'lazy' | 'eager';
+}
+
+const { image, class: className, loading = 'lazy' } = Astro.props;
+---
+
+<img
+    src={image.url}
+    alt={image.alt ?? ''}
+    width={image.width ?? undefined}
+    height={image.height ?? undefined}
+    loading={loading}
+    decoding="async"
+    class={className}
+/>

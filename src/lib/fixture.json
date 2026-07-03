@@ -1,0 +1,103 @@
+{
+    "documents": [
+        {
+            "id": 1,
+            "uid": "homepage",
+            "is_homepage": true,
+            "type": "landing_page",
+            "tags": [],
+            "lang": "nl-nl",
+            "first_publication_date": "2026-01-01T10:00:00+00:00",
+            "last_publication_date": "2026-01-01T10:00:00+00:00",
+            "data": {
+                "seo": {
+                    "meta_title": "Voorbeeldbedrijf — welkom",
+                    "meta_description": "Kennismaken met Voorbeeldbedrijf."
+                },
+                "slices": [
+                    {
+                        "id": "hero_section$a1b2c3d4",
+                        "sliceType": "hero_section",
+                        "variation": "default",
+                        "primary": {
+                            "heading": "Welkom bij Voorbeeldbedrijf",
+                            "body": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [
+                                        { "type": "text", "text": "Ontdek ons aanbod in een " },
+                                        { "type": "text", "marks": [{ "type": "bold" }], "text": "ontspannen" },
+                                        { "type": "text", "text": " sfeer." }
+                                    ]
+                                }
+                            ],
+                            "primary_button": { "label": "Neem contact op", "url": "/contact" },
+                            "image": { "url": "https://placehold.co/640x480", "alt": "Voorbeeldfoto" }
+                        },
+                        "items": []
+                    },
+                    {
+                        "id": "rich_text_section$e5f6g7h8",
+                        "sliceType": "rich_text_section",
+                        "variation": "default",
+                        "primary": {
+                            "content": [
+                                { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Over ons" }] },
+                                {
+                                    "type": "paragraph",
+                                    "content": [{ "type": "text", "text": "Wij helpen onze klanten al 20 jaar met vakmanschap en aandacht." }]
+                                }
+                            ]
+                        },
+                        "items": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "uid": "contact",
+            "type": "landing_page",
+            "tags": [],
+            "lang": "nl-nl",
+            "first_publication_date": "2026-01-02T10:00:00+00:00",
+            "last_publication_date": "2026-01-02T10:00:00+00:00",
+            "data": {
+                "seo": { "meta_title": "Contact — Voorbeeldbedrijf" },
+                "slices": [
+                    {
+                        "id": "hero_section$i9j0k1l2",
+                        "sliceType": "hero_section",
+                        "variation": "compact",
+                        "primary": {
+                            "heading": "Neem contact op",
+                            "body": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{ "type": "text", "text": "Bel of mail ons; we denken graag mee." }]
+                                }
+                            ]
+                        },
+                        "items": []
+                    },
+                    {
+                        "id": "booking_section$m3n4o5p6",
+                        "sliceType": "booking_section",
+                        "variation": "simple",
+                        "primary": {
+                            "eyebrow": "Agenda",
+                            "heading": "Maak een afspraak",
+                            "body": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{ "type": "text", "text": "Kies een dienst en een moment dat jou uitkomt." }]
+                                }
+                            ]
+                        },
+                        "items": []
+                    }
+                ]
+            }
+        }
+    ]
+}

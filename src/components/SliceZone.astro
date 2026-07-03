@@ -1,0 +1,70 @@
+---
+import SectionDivider from './SectionDivider.astro';
+import type { DividerStyle } from '../lib/design';
+import type { SliceInstance } from '../lib/types';
+
+// Renders a document's slice zone: maps each slice to the site's component
+// (via the injected registry), alternates light/muted surfaces, places
+// dividers between differing surfaces and sets the anchor targets for
+// section links. The registry and dividerStyle are per-site design; the
+// mechanics here are shared.
+
+interface Props {
+    slices: SliceInstance[];
+    registry: Record<string, any>;
+    dividerStyle: DividerStyle;
+}
+
+const { slices, registry, dividerStyle } = Astro.props;
+
+type Surface = 'light' | 'muted' | 'dark';
+
+// Which slices have a fixed dark background, and which alternate light/muted?
+// This is a superset map: entries for slice types a site doesn't register are
+// simply never reached.
+function isDark(slice: SliceInstance): boolean {
+    const t = slice.sliceType;
+    const v = slice.variation;
+    if (t === 'navigation' || t === 'hero_section' || t === 'footer') return true;
+    if (t === 'stats_section') return v !== 'with_description';
+    if (t === 'cta_section') return v === 'on_dark_background';
+    if (t === 'header_section') return v === 'with_background_image';
+    return false;
+}
+
+// Auto-rhythm: alternate the neutral sections so two identical backgrounds
+// never sit next to each other. Slices keep their own padding.
+let toggle: Surface = 'light';
+const resolved = slices
+    .filter((slice) => registry[slice.sliceType])
+    .map((slice) => {
+        let surface: Surface;
+        if (isDark(slice)) {
+            surface = 'dark';
+        } else {
+            surface = toggle;
+            toggle = toggle === 'light' ? 'muted' : 'light';
+        }
+        // Anchor target for section links: slice-instance id with '$' -> '-'.
+        const anchorId = typeof slice.id === 'string' && slice.id !== '' ? slice.id.replace('$', '-') : undefined;
+        return { slice, surface, anchorId, Component: registry[slice.sliceType] };
+    });
+
+let flip = false;
+---
+
+{
+    resolved.map((r, i) => {
+        const prev = resolved[i - 1];
+        const divider = i > 0 && prev.surface !== r.surface;
+        if (divider) flip = !flip;
+        return (
+            <>
+                {divider && <SectionDivider from={prev.surface} to={r.surface} style={dividerStyle} flip={flip} />}
+                <div id={r.anchorId} class="scroll-mt-20">
+                    <r.Component slice={r.slice} surface={r.surface} />
+                </div>
+            </>
+        );
+    })
+}
