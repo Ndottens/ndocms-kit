@@ -12,7 +12,13 @@
             "data": {
                 "seo": {
                     "meta_title": "Voorbeeldbedrijf — welkom",
-                    "meta_description": "Kennismaken met Voorbeeldbedrijf."
+                    "meta_description": "Kennismaken met Voorbeeldbedrijf.",
+                    "share_image": {
+                        "url": "https://placehold.co/1200x630/1f2937/f9fafb?text=Voorbeeldbedrijf",
+                        "alt": "Voorbeeldbedrijf",
+                        "width": 1200,
+                        "height": 630
+                    }
                 },
                 "slices": [
                     {
@@ -25,14 +31,34 @@
                                 {
                                     "type": "paragraph",
                                     "content": [
-                                        { "type": "text", "text": "Ontdek ons aanbod in een " },
-                                        { "type": "text", "marks": [{ "type": "bold" }], "text": "ontspannen" },
-                                        { "type": "text", "text": " sfeer." }
+                                        {
+                                            "type": "text",
+                                            "text": "Ontdek ons aanbod in een "
+                                        },
+                                        {
+                                            "type": "text",
+                                            "marks": [
+                                                {
+                                                    "type": "bold"
+                                                }
+                                            ],
+                                            "text": "ontspannen"
+                                        },
+                                        {
+                                            "type": "text",
+                                            "text": " sfeer."
+                                        }
                                     ]
                                 }
                             ],
-                            "primary_button": { "label": "Neem contact op", "url": "/contact" },
-                            "image": { "url": "https://placehold.co/640x480", "alt": "Voorbeeldfoto" }
+                            "primary_button": {
+                                "label": "Neem contact op",
+                                "url": "/contact"
+                            },
+                            "image": {
+                                "url": "https://placehold.co/640x480",
+                                "alt": "Voorbeeldfoto"
+                            }
                         },
                         "items": []
                     },
@@ -42,10 +68,26 @@
                         "variation": "default",
                         "primary": {
                             "content": [
-                                { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Over ons" }] },
+                                {
+                                    "type": "heading",
+                                    "attrs": {
+                                        "level": 2
+                                    },
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Over ons"
+                                        }
+                                    ]
+                                },
                                 {
                                     "type": "paragraph",
-                                    "content": [{ "type": "text", "text": "Wij helpen onze klanten al 20 jaar met vakmanschap en aandacht." }]
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Wij helpen onze klanten al 20 jaar met vakmanschap en aandacht."
+                                        }
+                                    ]
                                 }
                             ]
                         },
@@ -63,7 +105,9 @@
             "first_publication_date": "2026-01-02T10:00:00+00:00",
             "last_publication_date": "2026-01-02T10:00:00+00:00",
             "data": {
-                "seo": { "meta_title": "Contact — Voorbeeldbedrijf" },
+                "seo": {
+                    "meta_title": "Contact — Voorbeeldbedrijf"
+                },
                 "slices": [
                     {
                         "id": "hero_section$i9j0k1l2",
@@ -74,7 +118,12 @@
                             "body": [
                                 {
                                     "type": "paragraph",
-                                    "content": [{ "type": "text", "text": "Bel of mail ons; we denken graag mee." }]
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Bel of mail ons; we denken graag mee."
+                                        }
+                                    ]
                                 }
                             ]
                         },
@@ -90,7 +139,12 @@
                             "body": [
                                 {
                                     "type": "paragraph",
-                                    "content": [{ "type": "text", "text": "Kies een dienst en een moment dat jou uitkomt." }]
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Kies een dienst en een moment dat jou uitkomt."
+                                        }
+                                    ]
                                 }
                             ]
                         },

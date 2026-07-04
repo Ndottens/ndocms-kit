@@ -11,17 +11,22 @@ interface Props {
     description?: string;
     type?: 'website' | 'article';
     noindex?: boolean;
+    // Absolute URL of the social share image (og:image); falls back to
+    // site.shareImage when the page has none.
+    image?: string;
     // Page-specific structured data (e.g. BlogPosting, BreadcrumbList). The
     // site-level Organization/WebSite is always added below.
     jsonLd?: object | object[];
 }
 
-const { site, title, description, type = 'website', noindex = false, jsonLd } = Astro.props;
+const { site, title, description, type = 'website', noindex = false, image, jsonLd } = Astro.props;
 
 const desc = description ?? site.description;
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : Astro.url.pathname;
 const lang = site.locale.split('_')[0] || 'nl';
 const logo = site.logo && Astro.site ? new URL(site.logo, Astro.site).href : undefined;
+const siteShareImage = site.shareImage && Astro.site ? new URL(site.shareImage, Astro.site).href : site.shareImage;
+const shareImage = image ?? siteShareImage;
 
 // Site-level structured data. Becomes a LocalBusiness (or subtype) when `business`
 // is filled in site.ts — otherwise a plain Organization.
@@ -75,10 +80,12 @@ const graph = [organization, website, ...(jsonLd ? (Array.isArray(jsonLd) ? json
         <meta property="og:url" content={canonical} />
         <meta property="og:site_name" content={site.name} />
         <meta property="og:locale" content={site.locale} />
+        {shareImage && <meta property="og:image" content={shareImage} />}
 
-        <meta name="twitter:card" content="summary" />
+        <meta name="twitter:card" content={shareImage ? 'summary_large_image' : 'summary'} />
         <meta name="twitter:title" content={title} />
         <meta name="twitter:description" content={desc} />
+        {shareImage && <meta name="twitter:image" content={shareImage} />}
 
         <link rel="sitemap" href="/sitemap-index.xml" />
 

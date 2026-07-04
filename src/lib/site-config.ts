@@ -21,5 +21,8 @@ export interface SiteConfig {
     description: string; // default meta description + social fallback
     locale: string; // OG locale, e.g. 'nl_NL'
     logo?: string; // absolute path like '/logo.png' — used as the Organization logo
+    // Site-wide og:image fallback (path like '/share.jpg' or absolute URL, ideally
+    // 1200×630). Pages with a seo.share_image override this.
+    shareImage?: string;
     business?: BusinessInfo;
 }
