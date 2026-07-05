@@ -62,6 +62,9 @@ export function setupForms(): void {
 
         const endpoint = form.dataset.endpoint ?? '';
         const formType = form.dataset.formType ?? '';
+        // Overridable per form: a newsletter signup says "check your inbox"
+        // (double opt-in) instead of the generic thank-you.
+        const successMessage = form.dataset.successMessage ?? 'Bedankt, we hebben je bericht ontvangen.';
         const status = form.querySelector<HTMLElement>('[data-form-status]');
         const button = form.querySelector<HTMLButtonElement>('button[type=submit]');
 
@@ -74,7 +77,7 @@ export function setupForms(): void {
             // a bot gets no signal; nothing is sent.
             if (String(data.get('company') ?? '') !== '') {
                 form.reset();
-                setStatus(status, 'Bedankt, we hebben je bericht ontvangen.', 'ok');
+                setStatus(status, successMessage, 'ok');
                 return;
             }
 
@@ -103,7 +106,7 @@ export function setupForms(): void {
             }
             if (result.ok) {
                 form.reset();
-                setStatus(status, 'Bedankt, we hebben je bericht ontvangen.', 'ok');
+                setStatus(status, successMessage, 'ok');
                 resetTurnstile();
             } else {
                 setStatus(status, result.error ?? 'Er ging iets mis.', 'error');

@@ -72,6 +72,15 @@ export function submissionsEndpoint(): string | null {
     return `${base()}/submissions`;
 }
 
+// Public newsletter signup endpoint (double opt-in; no API key). Returns null
+// when the site isn't configured (fixture/preview mode).
+export function newsletterSubscribeEndpoint(): string | null {
+    if (!API_URL || !SITE_SLUG) {
+        return null;
+    }
+    return `${base()}/newsletter/subscribe`;
+}
+
 export interface BookingServiceItem {
     id: number;
     name: string;
