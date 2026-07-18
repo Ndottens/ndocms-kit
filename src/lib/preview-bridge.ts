@@ -884,11 +884,26 @@ export function initPreviewBridge(): void {
         (event) => {
             if (event.target instanceof Node && overlay.contains(event.target)) return;
             if (editToolbar && event.target instanceof Node && editToolbar.contains(event.target)) return;
-            // Clicks inside the active inline edit must reach the caret.
-            if (editingElement && event.target instanceof Node && editingElement.contains(event.target)) return;
+            // Clicks inside the active inline edit must reach the caret
+            // (placed on mousedown), but never follow the anchor the edited
+            // text may live in — a button label sits inside its <a>.
+            if (editingElement && event.target instanceof Node && editingElement.contains(event.target)) {
+                event.preventDefault();
+                return;
+            }
             event.preventDefault();
             event.stopPropagation();
             if (!plainMode) send({ type: 'ndocms:slice-click', sliceId: closestSliceId(event.target) });
+        },
+        true,
+    );
+
+    // Middle clicks open links in a new tab regardless of the click handler.
+    document.addEventListener(
+        'auxclick',
+        (event) => {
+            if (event.target instanceof Node && (overlay.contains(event.target) || editToolbar?.contains(event.target))) return;
+            event.preventDefault();
         },
         true,
     );
