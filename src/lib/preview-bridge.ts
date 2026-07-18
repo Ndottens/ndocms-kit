@@ -208,6 +208,10 @@ export function initPreviewBridge(): void {
     // Fills the toolbar once the editor answers inline-edit-start with the
     // field's allowed marks (edit-config message).
     let editToolbarFill: ((config: EditConfigMessage) => void) | null = null;
+    // Block that was indented to make room for the left-hand toolbar rail;
+    // restored when the edit session ends.
+    let indentedBlock: HTMLElement | null = null;
+    let indentedPrevMargin = '';
 
     // The overlay lives on <html>, not <body>: the body is replaced on every
     // render and the overlay must survive the swap. Children are positioned
@@ -410,6 +414,48 @@ export function initPreviewBridge(): void {
         return null;
     }
 
+    // Vertical column left of the edited element. When the text sits flush
+    // against the page edge, the edited block itself is indented for the
+    // duration of the session so the rail always fits; the wide link input
+    // is the only mode that goes above instead.
+    function positionEditToolbar(toolbar: HTMLElement, el: HTMLElement): void {
+        const rect = el.getBoundingClientRect();
+        if (toolbar.dataset.mode === 'input') {
+            toolbar.style.flexDirection = 'row';
+            toolbar.style.top = `${Math.max(rect.top + window.scrollY - 42, 4)}px`;
+            toolbar.style.left = `${Math.max(rect.left + window.scrollX, 4)}px`;
+            return;
+        }
+
+        toolbar.style.flexDirection = 'column';
+        const width = toolbar.offsetWidth || 34;
+        let left = rect.left + window.scrollX - width - 10;
+        if (left < 4 && !indentedBlock) {
+            // Indent the nearest BLOCK ancestor (an inline wrapper would get
+            // a mid-sentence gap instead).
+            let block: HTMLElement | null = el;
+            while (block && window.getComputedStyle(block).display.startsWith('inline')) {
+                block = block.parentElement;
+            }
+            if (block) {
+                indentedBlock = block;
+                indentedPrevMargin = block.style.marginLeft;
+                block.style.marginLeft = `${width + 14}px`;
+                left = el.getBoundingClientRect().left + window.scrollX - width - 10;
+            }
+        }
+        toolbar.style.left = `${Math.max(left, 4)}px`;
+        toolbar.style.top = `${el.getBoundingClientRect().top + window.scrollY}px`;
+    }
+
+    function restoreIndentedBlock(): void {
+        if (indentedBlock) {
+            indentedBlock.style.marginLeft = indentedPrevMargin;
+            indentedBlock = null;
+            indentedPrevMargin = '';
+        }
+    }
+
     function startInlineEdit(
         { el, sliceId, path }: { el: HTMLElement; sliceId: string; path: string },
         unwrapAfter = false,
@@ -436,20 +482,16 @@ export function initPreviewBridge(): void {
 
         send({ type: 'ndocms:inline-edit-start', sliceId, path });
 
-        // Floating toolbar above the edited text, in the section-toolbar
-        // style. Its buttons arrive via the editor's edit-config answer, so
-        // they always mirror what the field's panel editor allows. mousedown
-        // is cancelled on every button so the editable never loses focus
-        // (blur would end the session).
+        // Floating toolbar as a vertical column LEFT of the edited text (on
+        // top it covers the line above and gets in the way); falls back to
+        // above when there is no room on the left. mousedown is cancelled on
+        // every button so the editable never loses focus (blur would end
+        // the session).
         const toolbar = document.createElement('div');
         toolbar.style.cssText =
-            'position:absolute;display:none;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
+            'position:absolute;display:none;flex-direction:column;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
             'border:1px solid #d1d5db;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
-        const positionToolbar = () => {
-            const rect = el.getBoundingClientRect();
-            toolbar.style.top = `${Math.max(rect.top + window.scrollY - 42, 4)}px`;
-            toolbar.style.left = `${Math.max(rect.left + window.scrollX, 4)}px`;
-        };
+        const positionToolbar = () => positionEditToolbar(toolbar, el);
 
         // Only push when the text actually changed since the last push: the
         // safety push on blur must never overwrite a structural change (mark
@@ -463,6 +505,7 @@ export function initPreviewBridge(): void {
         };
 
         editToolbarFill = (config) => {
+            toolbar.dataset.mode = 'buttons';
             toolbar.replaceChildren();
             if (config.canClear) {
                 // Clearing commits the empty value and ends the session: the
@@ -503,6 +546,7 @@ export function initPreviewBridge(): void {
             editToolbar = null;
             editToolbarFill = null;
             editingElement = null;
+            restoreIndentedBlock();
             pushValue();
             // Unchanged text: restore the marker-carrying original so the
             // element stays editable without needing a re-render.
@@ -558,13 +602,9 @@ export function initPreviewBridge(): void {
 
         const toolbar = document.createElement('div');
         toolbar.style.cssText =
-            'position:absolute;display:none;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
+            'position:absolute;display:none;flex-direction:column;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
             'border:1px solid #d1d5db;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
-        const positionToolbar = () => {
-            const rect = el.getBoundingClientRect();
-            toolbar.style.top = `${Math.max(rect.top + window.scrollY - 42, 4)}px`;
-            toolbar.style.left = `${Math.max(rect.left + window.scrollX, 4)}px`;
-        };
+        const positionToolbar = () => positionEditToolbar(toolbar, el);
 
         const initialJson = JSON.stringify(serializeInline(el));
         let lastPushed = initialJson;
@@ -602,6 +642,7 @@ export function initPreviewBridge(): void {
                 onSubmit(href);
             };
 
+            toolbar.dataset.mode = 'input';
             toolbar.replaceChildren();
             const input = document.createElement('input');
             input.type = 'url';
@@ -687,6 +728,7 @@ export function initPreviewBridge(): void {
 
         editToolbarFill = (config) => {
             currentConfig = config;
+            toolbar.dataset.mode = 'buttons';
             toolbar.replaceChildren();
             for (const mark of config.marks) {
                 toolbar.appendChild(execButton(mark));
@@ -723,6 +765,7 @@ export function initPreviewBridge(): void {
             editToolbar = null;
             editToolbarFill = null;
             editingElement = null;
+            restoreIndentedBlock();
             push();
             // Unchanged block: restore the marker-carrying markup so it stays
             // editable without a re-render.
