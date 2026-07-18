@@ -12,7 +12,8 @@ const PROTOCOL_VERSION = 1;
 
 const SELECTED_OUTLINE = '2px solid #6366f1';
 const HOVER_OUTLINE = '2px dashed rgba(99, 102, 241, 0.65)';
-const EDITING_OUTLINE = '2px solid #10b981';
+// Same indigo family as selection/hover, so edit mode reads as one system.
+const EDITING_OUTLINE = '2px solid #6366f1';
 
 // Stega marker (mirrors app/Support/PreviewStega.php): invisible prefix
 // followed by a base-4 sequence of zero-width characters that encodes
@@ -103,6 +104,10 @@ export function initPreviewBridge(): void {
     let lastReportedHoverId: string | null = null;
     let scriptRunCounter = 0;
     let editingElement: HTMLElement | null = null;
+    // Lives directly on <html>, NOT inside the overlay: rebuildOverlay()
+    // replaceChildren()s the overlay on every select/hover echo and would
+    // wipe the toolbar the moment an edit session starts.
+    let editToolbar: HTMLElement | null = null;
 
     // The overlay lives on <html>, not <body>: the body is replaced on every
     // render and the overlay must survive the swap. Children are positioned
@@ -273,6 +278,11 @@ export function initPreviewBridge(): void {
         return null;
     }
 
+    // Rich-text leaf paths look like "...content.<n>.text"; only those get
+    // the bold/italic toggles (whole segment), plain text fields get the
+    // clear button instead.
+    const RICH_TEXT_PATH_RE = /\.content\.\d+\.text$/;
+
     function startInlineEdit(
         { el, sliceId, path }: { el: HTMLElement; sliceId: string; path: string },
         unwrapAfter = false,
@@ -295,8 +305,69 @@ export function initPreviewBridge(): void {
 
         send({ type: 'ndocms:inline-edit-start' });
 
+        // Floating toolbar above the edited text, in the section-toolbar
+        // style. mousedown is cancelled on every button so the editable
+        // never loses focus (blur would end the session).
+        const toolbar = document.createElement('div');
+        toolbar.style.cssText =
+            'position:absolute;display:flex;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
+            'border:1px solid #d1d5db;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
+        const positionToolbar = () => {
+            const rect = el.getBoundingClientRect();
+            toolbar.style.top = `${Math.max(rect.top + window.scrollY - 42, 4)}px`;
+            toolbar.style.left = `${Math.max(rect.left + window.scrollX, 4)}px`;
+        };
+
         const pushValue = () => send({ type: 'ndocms:inline-edit', sliceId, path, value: stripStega(el.textContent ?? '') });
-        const onInput = () => pushValue();
+
+        function toolbarToggle(label: string, title: string, mark: 'bold' | 'italic', initial: boolean): HTMLButtonElement {
+            const button = overlayButton(label, title, () => undefined);
+            if (mark === 'bold') button.style.fontWeight = '700';
+            if (mark === 'italic') button.style.fontStyle = 'italic';
+            let active = initial;
+            const paint = () => {
+                button.style.background = active ? '#eef2ff' : '#ffffff';
+                button.style.borderColor = active ? '#6366f1' : '#d1d5db';
+                button.style.color = active ? '#4f46e5' : '#4b5563';
+            };
+            paint();
+            // Runs after overlayButton's own mouseleave reset, so the active
+            // state wins again once the pointer leaves.
+            button.addEventListener('mouseleave', paint);
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => {
+                active = !active;
+                if (mark === 'bold') el.style.fontWeight = active ? '700' : '400';
+                if (mark === 'italic') el.style.fontStyle = active ? 'italic' : 'normal';
+                paint();
+                positionToolbar();
+                send({ type: 'ndocms:inline-mark', sliceId, path, mark, active });
+                el.focus();
+            });
+            return button;
+        }
+
+        if (RICH_TEXT_PATH_RE.test(path)) {
+            const computed = window.getComputedStyle(el);
+            toolbar.appendChild(toolbarToggle('B', 'Vet', 'bold', parseInt(computed.fontWeight, 10) >= 600));
+            toolbar.appendChild(toolbarToggle('I', 'Cursief', 'italic', computed.fontStyle === 'italic'));
+        } else {
+            const clear = overlayButton('⌫', 'Leegmaken', () => {
+                el.textContent = '';
+                pushValue();
+                el.focus();
+            });
+            clear.addEventListener('mousedown', (event) => event.preventDefault());
+            toolbar.appendChild(clear);
+        }
+        positionToolbar();
+        editToolbar = toolbar;
+        document.documentElement.appendChild(toolbar);
+
+        const onInput = () => {
+            pushValue();
+            positionToolbar();
+        };
         const onKeydown = (event: KeyboardEvent) => {
             if (event.key === 'Enter' || event.key === 'Escape') {
                 event.preventDefault();
@@ -310,6 +381,8 @@ export function initPreviewBridge(): void {
             el.removeAttribute('contenteditable');
             el.style.outline = '';
             el.style.outlineOffset = '';
+            toolbar.remove();
+            editToolbar = null;
             editingElement = null;
             pushValue();
             if (unwrapAfter) {
@@ -466,6 +539,7 @@ export function initPreviewBridge(): void {
         'click',
         (event) => {
             if (event.target instanceof Node && overlay.contains(event.target)) return;
+            if (editToolbar && event.target instanceof Node && editToolbar.contains(event.target)) return;
             // Clicks inside the active inline edit must reach the caret.
             if (editingElement && event.target instanceof Node && editingElement.contains(event.target)) return;
             event.preventDefault();
@@ -481,6 +555,18 @@ export function initPreviewBridge(): void {
             (event) => {
                 if (event.target instanceof Node && overlay.contains(event.target)) return;
                 if (editingElement) return;
+
+                const iconSvg = event.target instanceof Element ? event.target.closest('svg[data-ndocms-icon]') : null;
+                if (iconSvg) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    send({
+                        type: 'ndocms:icon-edit',
+                        sliceId: closestSliceId(iconSvg),
+                        name: iconSvg.getAttribute('data-ndocms-icon') ?? '',
+                    });
+                    return;
+                }
 
                 if (event.target instanceof HTMLImageElement) {
                     event.preventDefault();
@@ -518,6 +604,7 @@ export function initPreviewBridge(): void {
         document.addEventListener('mouseover', (event) => {
             // Hovering the overlay (toolbar/insert buttons) keeps the section hover.
             if (event.target instanceof Node && overlay.contains(event.target)) return;
+            if (editToolbar && event.target instanceof Node && editToolbar.contains(event.target)) return;
             const id = closestSliceId(event.target);
             setHovered(id);
             if (id !== lastReportedHoverId) {
