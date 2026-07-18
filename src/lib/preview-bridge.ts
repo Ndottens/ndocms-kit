@@ -237,20 +237,21 @@ export function initPreviewBridge(): void {
         return target.closest('[data-ndocms-slice]')?.getAttribute('data-ndocms-slice') ?? null;
     }
 
-    // Walk up from the double-clicked node to the element whose OWN text
-    // nodes carry a stega marker: that element renders exactly one field
-    // value and becomes the inline editing surface.
+    // Walk up from the double-clicked node to the element that renders
+    // exactly one annotated value: a leaf element (no element children)
+    // whose text carries exactly one stega marker. Mixed rich-text
+    // paragraphs (plain runs next to <strong>/<a> children) never qualify
+    // as a whole, so their structure cannot be flattened by an inline edit;
+    // their formatted segments are leaf elements and remain editable.
     function findEditableAt(target: EventTarget | null): { el: HTMLElement; sliceId: string; path: string } | null {
         let el: Element | null = target instanceof Element ? target : null;
         while (el && el !== document.body) {
-            const ownText = Array.from(el.childNodes)
-                .filter((node) => node.nodeType === Node.TEXT_NODE)
-                .map((node) => node.nodeValue ?? '')
-                .join('');
-            if (ownText.includes(STEGA_PREFIX) && el instanceof HTMLElement) {
-                const decoded = decodeStega(el.textContent ?? '');
-                if (decoded) return { el, ...decoded };
-                return null;
+            const text = el.textContent ?? '';
+            if (text.includes(STEGA_PREFIX)) {
+                if (!(el instanceof HTMLElement) || el.childElementCount > 0) return null;
+                if (text.split(STEGA_PREFIX).length !== 2) return null;
+                const decoded = decodeStega(text);
+                return decoded ? { el, ...decoded } : null;
             }
             el = el.parentElement;
         }
