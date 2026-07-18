@@ -74,7 +74,26 @@ interface HoverMessage {
     sliceId: string | null;
 }
 
-type EditorMessage = RenderMessage | SelectMessage | HoverMessage;
+type InlineMarkType = 'bold' | 'italic' | 'strike' | 'link';
+
+interface EditConfigMessage {
+    type: 'ndocms:edit-config';
+    marks: InlineMarkType[];
+    canClear: boolean;
+}
+
+type EditorMessage = RenderMessage | SelectMessage | HoverMessage | EditConfigMessage;
+
+const TRASH_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/>' +
+    '<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+const LINK_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>' +
+    '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 
 interface BridgeConfig {
     editorOrigin: string;
@@ -108,6 +127,9 @@ export function initPreviewBridge(): void {
     // replaceChildren()s the overlay on every select/hover echo and would
     // wipe the toolbar the moment an edit session starts.
     let editToolbar: HTMLElement | null = null;
+    // Fills the toolbar once the editor answers inline-edit-start with the
+    // field's allowed marks (edit-config message).
+    let editToolbarFill: ((config: EditConfigMessage) => void) | null = null;
 
     // The overlay lives on <html>, not <body>: the body is replaced on every
     // render and the overlay must survive the swap. Children are positioned
@@ -278,19 +300,18 @@ export function initPreviewBridge(): void {
         return null;
     }
 
-    // Rich-text leaf paths look like "...content.<n>.text"; only those get
-    // the bold/italic toggles (whole segment), plain text fields get the
-    // clear button instead.
-    const RICH_TEXT_PATH_RE = /\.content\.\d+\.text$/;
-
     function startInlineEdit(
         { el, sliceId, path }: { el: HTMLElement; sliceId: string; path: string },
         unwrapAfter = false,
     ): void {
         editingElement = el;
         // Strip the invisible markers before editing so the caret never
-        // lands inside them; the next render re-annotates the fresh value.
-        el.textContent = stripStega(el.textContent ?? '');
+        // lands inside them. The original (marker-carrying) text is kept: an
+        // unchanged session restores it, because without a data change no
+        // re-render comes along to re-annotate — and without markers the
+        // element would silently stop being editable.
+        const originalText = el.textContent ?? '';
+        el.textContent = stripStega(originalText);
         el.setAttribute('contenteditable', 'plaintext-only');
         if (!el.isContentEditable) el.setAttribute('contenteditable', 'true');
         el.style.outline = EDITING_OUTLINE;
@@ -303,14 +324,16 @@ export function initPreviewBridge(): void {
         selection?.removeAllRanges();
         selection?.addRange(range);
 
-        send({ type: 'ndocms:inline-edit-start' });
+        send({ type: 'ndocms:inline-edit-start', sliceId, path });
 
         // Floating toolbar above the edited text, in the section-toolbar
-        // style. mousedown is cancelled on every button so the editable
-        // never loses focus (blur would end the session).
+        // style. Its buttons arrive via the editor's edit-config answer, so
+        // they always mirror what the field's panel editor allows. mousedown
+        // is cancelled on every button so the editable never loses focus
+        // (blur would end the session).
         const toolbar = document.createElement('div');
         toolbar.style.cssText =
-            'position:absolute;display:flex;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
+            'position:absolute;display:none;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
             'border:1px solid #d1d5db;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
         const positionToolbar = () => {
             const rect = el.getBoundingClientRect();
@@ -318,13 +341,38 @@ export function initPreviewBridge(): void {
             toolbar.style.left = `${Math.max(rect.left + window.scrollX, 4)}px`;
         };
 
-        const pushValue = () => send({ type: 'ndocms:inline-edit', sliceId, path, value: stripStega(el.textContent ?? '') });
+        // Only push when the text actually changed since the last push: the
+        // safety push on blur must never overwrite a structural change (mark
+        // split) that was applied in between from the same editor state.
+        let lastPushed = stripStega(originalText);
+        const pushValue = () => {
+            const value = stripStega(el.textContent ?? '');
+            if (value === lastPushed) return;
+            lastPushed = value;
+            send({ type: 'ndocms:inline-edit', sliceId, path, value });
+        };
 
-        function toolbarToggle(label: string, title: string, mark: 'bold' | 'italic', initial: boolean): HTMLButtonElement {
+        function markToggle(mark: InlineMarkType): HTMLButtonElement {
+            const labels: Record<InlineMarkType, [string, string]> = {
+                bold: ['B', 'Vet'],
+                italic: ['I', 'Cursief'],
+                strike: ['S', 'Doorhalen'],
+                link: ['', 'Link'],
+            };
+            const [label, title] = labels[mark];
             const button = overlayButton(label, title, () => undefined);
             if (mark === 'bold') button.style.fontWeight = '700';
             if (mark === 'italic') button.style.fontStyle = 'italic';
-            let active = initial;
+            if (mark === 'strike') button.style.textDecoration = 'line-through';
+            if (mark === 'link') button.innerHTML = LINK_SVG;
+
+            const computed = window.getComputedStyle(el);
+            let active =
+                mark === 'bold' ? parseInt(computed.fontWeight, 10) >= 600 :
+                mark === 'italic' ? computed.fontStyle === 'italic' :
+                mark === 'strike' ? el.closest('s, del') !== null || computed.textDecorationLine.includes('line-through') :
+                el.closest('a') !== null;
+
             const paint = () => {
                 button.style.background = active ? '#eef2ff' : '#ffffff';
                 button.style.borderColor = active ? '#6366f1' : '#d1d5db';
@@ -336,31 +384,76 @@ export function initPreviewBridge(): void {
             button.addEventListener('mouseleave', paint);
             button.addEventListener('mousedown', (event) => event.preventDefault());
             button.addEventListener('click', () => {
+                const value = stripStega(el.textContent ?? '');
+
+                // Selection within the edited text: mark only that range.
+                // Without a selection the whole segment toggles in place.
+                let start = 0;
+                let end = value.length;
+                const selection = window.getSelection();
+                if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    if (
+                        el.contains(range.startContainer) &&
+                        range.startContainer === range.endContainer &&
+                        range.startContainer.nodeType === Node.TEXT_NODE
+                    ) {
+                        start = range.startOffset;
+                        end = range.endOffset;
+                    }
+                }
+                const partial = start > 0 || end < value.length;
+
+                let href: string | undefined;
+                if (mark === 'link' && (partial || !active)) {
+                    href = window.prompt('URL') ?? undefined;
+                    if (!href) {
+                        el.focus();
+                        return;
+                    }
+                }
+
+                if (partial) {
+                    // Splitting the node restructures the document: commit
+                    // and end the session, the re-render shows the result.
+                    send({ type: 'ndocms:inline-mark', sliceId, path, mark, active: !active, href, start, end, value });
+                    el.blur();
+                    return;
+                }
+
                 active = !active;
                 if (mark === 'bold') el.style.fontWeight = active ? '700' : '400';
                 if (mark === 'italic') el.style.fontStyle = active ? 'italic' : 'normal';
+                if (mark === 'strike') el.style.textDecoration = active ? 'line-through' : 'none';
+                if (mark === 'link') el.style.textDecoration = active ? 'underline' : 'none';
                 paint();
                 positionToolbar();
-                send({ type: 'ndocms:inline-mark', sliceId, path, mark, active });
+                send({ type: 'ndocms:inline-mark', sliceId, path, mark, active, href, start, end, value });
                 el.focus();
             });
             return button;
         }
 
-        if (RICH_TEXT_PATH_RE.test(path)) {
-            const computed = window.getComputedStyle(el);
-            toolbar.appendChild(toolbarToggle('B', 'Vet', 'bold', parseInt(computed.fontWeight, 10) >= 600));
-            toolbar.appendChild(toolbarToggle('I', 'Cursief', 'italic', computed.fontStyle === 'italic'));
-        } else {
-            const clear = overlayButton('⌫', 'Leegmaken', () => {
-                el.textContent = '';
-                pushValue();
-                el.focus();
-            });
-            clear.addEventListener('mousedown', (event) => event.preventDefault());
-            toolbar.appendChild(clear);
-        }
-        positionToolbar();
+        editToolbarFill = (config) => {
+            toolbar.replaceChildren();
+            for (const mark of config.marks) {
+                toolbar.appendChild(markToggle(mark));
+            }
+            if (config.canClear) {
+                // Clearing commits the empty value and ends the session: the
+                // re-render then hides the element like the live site would.
+                const clear = overlayButton('', 'Leegmaken', () => {
+                    el.textContent = '';
+                    pushValue();
+                    el.blur();
+                });
+                clear.innerHTML = TRASH_SVG;
+                clear.addEventListener('mousedown', (event) => event.preventDefault());
+                toolbar.appendChild(clear);
+            }
+            toolbar.style.display = toolbar.childElementCount > 0 ? 'flex' : 'none';
+            positionToolbar();
+        };
         editToolbar = toolbar;
         document.documentElement.appendChild(toolbar);
 
@@ -383,10 +476,17 @@ export function initPreviewBridge(): void {
             el.style.outlineOffset = '';
             toolbar.remove();
             editToolbar = null;
+            editToolbarFill = null;
             editingElement = null;
             pushValue();
+            // Unchanged text: restore the marker-carrying original so the
+            // element stays editable without needing a re-render.
+            const finalText = el.textContent ?? '';
+            const unchanged = finalText === stripStega(originalText);
             if (unwrapAfter) {
-                el.replaceWith(document.createTextNode(el.textContent ?? ''));
+                el.replaceWith(document.createTextNode(unchanged ? originalText : finalText));
+            } else if (unchanged) {
+                el.textContent = originalText;
             }
             send({ type: 'ndocms:inline-edit-end' });
         };
@@ -528,6 +628,9 @@ export function initPreviewBridge(): void {
                 break;
             case 'ndocms:hover':
                 setHovered(message.sliceId);
+                break;
+            case 'ndocms:edit-config':
+                editToolbarFill?.(message);
                 break;
         }
     });
