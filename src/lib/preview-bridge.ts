@@ -23,6 +23,7 @@ interface RenderMessage {
     type: 'ndocms:render';
     requestId: number;
     data: { slices?: unknown[] } & Record<string, unknown>;
+    token: string | null;
 }
 
 interface SelectMessage {
@@ -273,9 +274,11 @@ export function initPreviewBridge(): void {
 
         let html: string;
         try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (message.token) headers['X-Ndocms-Preview-Token'] = message.token;
             const response = await fetch('/_ndocms/render', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ data: message.data }),
                 signal: abort.signal,
             });
