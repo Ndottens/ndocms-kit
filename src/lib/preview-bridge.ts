@@ -3,14 +3,21 @@
 //
 // The editor embeds the shell in an iframe and talks postMessage; the bridge
 // POSTs draft data to its own origin, swaps the <body> with the rendered
-// result, reports DOM events (clicks/hovers on sections) back to the editor
-// and draws the selection/hover highlights. The message protocol is mirrored
-// in the CMS (resources/js/lib/previewProtocol.ts).
+// result, reports DOM events (clicks/hovers on sections) back to the editor,
+// draws the selection/hover highlights and the structure overlay (insert
+// buttons between sections, move/remove toolbar). The message protocol is
+// mirrored in the CMS (resources/js/lib/previewProtocol.ts).
 
 const PROTOCOL_VERSION = 1;
 
 const SELECTED_OUTLINE = '2px solid #6366f1';
 const HOVER_OUTLINE = '2px dashed rgba(99, 102, 241, 0.65)';
+
+const BUTTON_BASE =
+    'display:flex;align-items:center;justify-content:center;box-sizing:border-box;' +
+    'background:#ffffff;border:1px solid #d1d5db;border-radius:9999px;color:#4b5563;' +
+    'cursor:pointer;font:500 14px/1 system-ui,sans-serif;padding:0;' +
+    'box-shadow:0 1px 2px rgba(0,0,0,0.1);';
 
 interface RenderMessage {
     type: 'ndocms:render';
@@ -53,6 +60,15 @@ export function initPreviewBridge(): void {
     let hoveredId: string | null = null;
     let lastReportedHoverId: string | null = null;
 
+    // The overlay lives on <html>, not <body>: the body is replaced on every
+    // render and the overlay must survive the swap. Children are positioned
+    // in document coordinates, so scrolling never invalidates them.
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:0;z-index:2147483000;';
+    document.documentElement.appendChild(overlay);
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => rebuildOverlay());
+    resizeObserver?.observe(document.body);
+
     function send(message: Record<string, unknown>): void {
         window.parent.postMessage(message, editorOrigin);
     }
@@ -81,6 +97,77 @@ export function initPreviewBridge(): void {
                 el.style.outlineOffset = '';
             }
         }
+    }
+
+    function overlayButton(symbol: string, title: string, onClick: () => void): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = symbol;
+        button.title = title;
+        button.setAttribute('aria-label', title);
+        button.style.cssText = `${BUTTON_BASE}width:26px;height:26px;`;
+        button.addEventListener('mouseenter', () => {
+            button.style.borderColor = '#6366f1';
+            button.style.color = '#4f46e5';
+        });
+        button.addEventListener('mouseleave', () => {
+            button.style.borderColor = '#d1d5db';
+            button.style.color = '#4b5563';
+        });
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    function rebuildOverlay(): void {
+        overlay.replaceChildren();
+        const wrappers = sliceWrappers();
+        if (wrappers.length === 0) return;
+
+        // Insert buttons on every boundary: before each section + after the last.
+        const boundaries: { y: number; beforeSliceId: string | null }[] = wrappers.map((el) => ({
+            y: el.getBoundingClientRect().top + window.scrollY,
+            beforeSliceId: el.getAttribute('data-ndocms-slice'),
+        }));
+        boundaries.push({
+            y: wrappers[wrappers.length - 1].getBoundingClientRect().bottom + window.scrollY,
+            beforeSliceId: null,
+        });
+
+        for (const boundary of boundaries) {
+            const button = overlayButton('+', 'Sectie toevoegen', () =>
+                send({ type: 'ndocms:insert-at', beforeSliceId: boundary.beforeSliceId }),
+            );
+            button.style.position = 'absolute';
+            button.style.left = '50%';
+            button.style.top = `${boundary.y}px`;
+            button.style.transform = 'translate(-50%, -50%)';
+            overlay.appendChild(button);
+        }
+
+        // Move/remove toolbar on the SELECTED section only. Hover would be
+        // fluid, but the toolbar then jumps to whichever section the pointer
+        // crosses on its way to the buttons — clicks land on the wrong slice.
+        const activeId = selectedId;
+        const active = wrappers.find((el) => el.getAttribute('data-ndocms-slice') === activeId);
+        if (!active || !activeId) return;
+
+        const rect = active.getBoundingClientRect();
+        const toolbar = document.createElement('div');
+        toolbar.style.cssText =
+            `position:absolute;top:${rect.top + window.scrollY + 10}px;right:14px;` +
+            'display:flex;gap:4px;padding:3px;background:#ffffff;border:1px solid #d1d5db;' +
+            'border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
+        toolbar.appendChild(overlayButton('↑', 'Omhoog', () => send({ type: 'ndocms:move', sliceId: activeId, direction: 'up' })));
+        toolbar.appendChild(overlayButton('↓', 'Omlaag', () => send({ type: 'ndocms:move', sliceId: activeId, direction: 'down' })));
+        toolbar.appendChild(overlayButton('✕', 'Verwijderen', () => send({ type: 'ndocms:remove', sliceId: activeId })));
+        overlay.appendChild(toolbar);
+    }
+
+    function setHovered(id: string | null): void {
+        if (id === hoveredId) return;
+        hoveredId = id;
+        applyHighlights();
+        rebuildOverlay();
     }
 
     function scrollToSlice(id: string): void {
@@ -159,7 +246,10 @@ export function initPreviewBridge(): void {
         const scrollY = window.scrollY;
         document.body = document.adoptNode(parsed.body);
         window.scrollTo({ top: scrollY, behavior: 'instant' });
+        resizeObserver?.disconnect();
+        resizeObserver?.observe(document.body);
         applyHighlights();
+        rebuildOverlay();
 
         send({ type: 'ndocms:rendered', requestId: message.requestId, sliceIds: renderedSliceIds() });
     }
@@ -176,20 +266,22 @@ export function initPreviewBridge(): void {
             case 'ndocms:select':
                 selectedId = message.sliceId;
                 applyHighlights();
+                rebuildOverlay();
                 if (selectedId) scrollToSlice(selectedId);
                 break;
             case 'ndocms:hover':
-                hoveredId = message.sliceId;
-                applyHighlights();
+                setHovered(message.sliceId);
                 break;
         }
     });
 
     // Edit mode: a click selects the section instead of following links or
     // triggering slice interactivity. Capture phase, so nothing else runs.
+    // Overlay buttons keep their own click handling.
     document.addEventListener(
         'click',
         (event) => {
+            if (event.target instanceof Node && overlay.contains(event.target)) return;
             event.preventDefault();
             event.stopPropagation();
             send({ type: 'ndocms:slice-click', sliceId: closestSliceId(event.target) });
@@ -198,9 +290,10 @@ export function initPreviewBridge(): void {
     );
 
     document.addEventListener('mouseover', (event) => {
+        // Hovering the overlay (toolbar/insert buttons) keeps the section hover.
+        if (event.target instanceof Node && overlay.contains(event.target)) return;
         const id = closestSliceId(event.target);
-        hoveredId = id;
-        applyHighlights();
+        setHovered(id);
         if (id !== lastReportedHoverId) {
             lastReportedHoverId = id;
             send({ type: 'ndocms:slice-hover', sliceId: id });
@@ -208,9 +301,8 @@ export function initPreviewBridge(): void {
     });
 
     document.addEventListener('mouseleave', () => {
-        hoveredId = null;
         lastReportedHoverId = null;
-        applyHighlights();
+        setHovered(null);
         send({ type: 'ndocms:slice-hover', sliceId: null });
     });
 
@@ -220,5 +312,8 @@ export function initPreviewBridge(): void {
         }
     });
 
+    window.addEventListener('resize', () => rebuildOverlay());
+
+    rebuildOverlay();
     send({ type: 'ndocms:ready', version: PROTOCOL_VERSION });
 }
