@@ -576,6 +576,70 @@ export function initPreviewBridge(): void {
             send({ type: 'ndocms:inline-rich', sliceId, path: contentPath, nodes });
         };
 
+        // While the link input has focus the editable blurs; the session
+        // must survive that instead of committing.
+        let suspended = false;
+        let currentConfig: EditConfigMessage | null = null;
+
+        // Swap the toolbar for an inline URL input (nicer than the browser
+        // prompt, and it stays inside the edit session).
+        function showLinkInput(onSubmit: (href: string | null) => void): void {
+            suspended = true;
+            const savedSelection = (() => {
+                const sel = window.getSelection();
+                return sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+            })();
+
+            const done = (href: string | null) => {
+                suspended = false;
+                el.focus();
+                if (savedSelection) {
+                    const sel = window.getSelection();
+                    sel?.removeAllRanges();
+                    sel?.addRange(savedSelection);
+                }
+                if (currentConfig) editToolbarFill?.(currentConfig);
+                onSubmit(href);
+            };
+
+            toolbar.replaceChildren();
+            const input = document.createElement('input');
+            input.type = 'url';
+            input.placeholder = 'https://…';
+            input.style.cssText =
+                'width:220px;border:1px solid #d1d5db;border-radius:9999px;padding:3px 12px;' +
+                'font:13px/1.4 system-ui,sans-serif;color:#111827;background:#ffffff;outline:none;';
+            input.addEventListener('focus', () => {
+                input.style.borderColor = '#6366f1';
+            });
+            input.addEventListener('keydown', (event) => {
+                event.stopPropagation();
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    done(input.value.trim() || null);
+                }
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    done(null);
+                }
+            });
+            input.addEventListener('blur', () => {
+                // Clicking anywhere else cancels; OK/cancel prevent this via
+                // their mousedown handlers.
+                setTimeout(() => {
+                    if (suspended) done(null);
+                }, 0);
+            });
+            const ok = overlayButton('✓', 'Toepassen', () => done(input.value.trim() || null));
+            const cancel = overlayButton('✕', 'Annuleren', () => done(null));
+            for (const button of [ok, cancel]) {
+                button.addEventListener('mousedown', (event) => event.preventDefault());
+            }
+            toolbar.append(input, ok, cancel);
+            positionToolbar();
+            input.focus();
+        }
+
         function execButton(mark: InlineMarkType): HTMLButtonElement {
             const labels: Record<InlineMarkType, [string, string]> = {
                 bold: ['B', 'Vet'],
@@ -604,12 +668,12 @@ export function initPreviewBridge(): void {
                     if (anchorEl?.closest('a')) {
                         document.execCommand('unlink');
                     } else {
-                        const href = window.prompt('URL');
-                        if (!href) {
-                            el.focus();
-                            return;
-                        }
-                        document.execCommand('createLink', false, href);
+                        showLinkInput((href) => {
+                            if (!href) return;
+                            document.execCommand('createLink', false, href);
+                            push();
+                        });
+                        return;
                     }
                 } else {
                     document.execCommand({ bold: 'bold', italic: 'italic', strike: 'strikeThrough' }[mark]);
@@ -622,6 +686,7 @@ export function initPreviewBridge(): void {
         }
 
         editToolbarFill = (config) => {
+            currentConfig = config;
             toolbar.replaceChildren();
             for (const mark of config.marks) {
                 toolbar.appendChild(execButton(mark));
@@ -643,9 +708,14 @@ export function initPreviewBridge(): void {
                 el.blur();
             }
         };
+        const onBlur = () => {
+            if (suspended) return;
+            finish();
+        };
         const finish = () => {
             el.removeEventListener('input', onInput);
             el.removeEventListener('keydown', onKeydown);
+            el.removeEventListener('blur', onBlur);
             el.removeAttribute('contenteditable');
             el.style.outline = '';
             el.style.outlineOffset = '';
@@ -663,7 +733,7 @@ export function initPreviewBridge(): void {
         };
         el.addEventListener('input', onInput);
         el.addEventListener('keydown', onKeydown);
-        el.addEventListener('blur', finish, { once: true });
+        el.addEventListener('blur', onBlur);
     }
 
     // Astro bundles CSS per page: the empty shell does not include the slice
