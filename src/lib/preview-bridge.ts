@@ -55,6 +55,10 @@ export function initPreviewBridge(): void {
     const editorOrigin = config.editorOrigin;
     if (!editorOrigin || window.parent === window) return;
 
+    // Plain mode (?mode=plain): render-only, no edit chrome. Used for the
+    // live slice previews in the add-section modal.
+    const plainMode = new URLSearchParams(window.location.search).get('mode') === 'plain';
+
     let renderAbort: AbortController | null = null;
     let selectedId: string | null = null;
     let hoveredId: string | null = null;
@@ -66,9 +70,12 @@ export function initPreviewBridge(): void {
     // in document coordinates, so scrolling never invalidates them.
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:0;z-index:2147483000;';
-    document.documentElement.appendChild(overlay);
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => rebuildOverlay());
-    resizeObserver?.observe(document.body);
+    let resizeObserver: ResizeObserver | null = null;
+    if (!plainMode) {
+        document.documentElement.appendChild(overlay);
+        resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => rebuildOverlay());
+        resizeObserver?.observe(document.body);
+    }
 
     function send(message: Record<string, unknown>): void {
         window.parent.postMessage(message, editorOrigin);
@@ -120,6 +127,7 @@ export function initPreviewBridge(): void {
     }
 
     function rebuildOverlay(): void {
+        if (plainMode) return;
         overlay.replaceChildren();
         const wrappers = sliceWrappers();
         if (wrappers.length === 0) return;
@@ -134,13 +142,17 @@ export function initPreviewBridge(): void {
             beforeSliceId: null,
         });
 
+        // Clamp so the outermost buttons stay fully visible instead of being
+        // cut in half on the document's top and bottom edges.
+        const clampMargin = 15;
+        const maxTop = document.documentElement.scrollHeight - clampMargin;
         for (const boundary of boundaries) {
             const button = overlayButton('+', 'Sectie toevoegen', () =>
                 send({ type: 'ndocms:insert-at', beforeSliceId: boundary.beforeSliceId }),
             );
             button.style.position = 'absolute';
             button.style.left = '50%';
-            button.style.top = `${boundary.y}px`;
+            button.style.top = `${Math.min(Math.max(boundary.y, clampMargin), maxTop)}px`;
             button.style.transform = 'translate(-50%, -50%)';
             overlay.appendChild(button);
         }
@@ -323,35 +335,37 @@ export function initPreviewBridge(): void {
             if (event.target instanceof Node && overlay.contains(event.target)) return;
             event.preventDefault();
             event.stopPropagation();
-            send({ type: 'ndocms:slice-click', sliceId: closestSliceId(event.target) });
+            if (!plainMode) send({ type: 'ndocms:slice-click', sliceId: closestSliceId(event.target) });
         },
         true,
     );
 
-    document.addEventListener('mouseover', (event) => {
-        // Hovering the overlay (toolbar/insert buttons) keeps the section hover.
-        if (event.target instanceof Node && overlay.contains(event.target)) return;
-        const id = closestSliceId(event.target);
-        setHovered(id);
-        if (id !== lastReportedHoverId) {
-            lastReportedHoverId = id;
-            send({ type: 'ndocms:slice-hover', sliceId: id });
-        }
-    });
+    if (!plainMode) {
+        document.addEventListener('mouseover', (event) => {
+            // Hovering the overlay (toolbar/insert buttons) keeps the section hover.
+            if (event.target instanceof Node && overlay.contains(event.target)) return;
+            const id = closestSliceId(event.target);
+            setHovered(id);
+            if (id !== lastReportedHoverId) {
+                lastReportedHoverId = id;
+                send({ type: 'ndocms:slice-hover', sliceId: id });
+            }
+        });
 
-    document.addEventListener('mouseleave', () => {
-        lastReportedHoverId = null;
-        setHovered(null);
-        send({ type: 'ndocms:slice-hover', sliceId: null });
-    });
+        document.addEventListener('mouseleave', () => {
+            lastReportedHoverId = null;
+            setHovered(null);
+            send({ type: 'ndocms:slice-hover', sliceId: null });
+        });
 
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            send({ type: 'ndocms:slice-click', sliceId: null });
-        }
-    });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                send({ type: 'ndocms:slice-click', sliceId: null });
+            }
+        });
 
-    window.addEventListener('resize', () => rebuildOverlay());
+        window.addEventListener('resize', () => rebuildOverlay());
+    }
 
     rebuildOverlay();
     send({ type: 'ndocms:ready', version: PROTOCOL_VERSION });
