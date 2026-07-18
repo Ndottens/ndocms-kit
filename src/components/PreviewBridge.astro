@@ -1,11 +1,16 @@
 ---
 // Story-editor bridge bootstrap. Used exclusively by the /_ndocms/render
 // shell (see lib/preview.ts); production pages never import this component.
-// The editor origin is derived at build time from NDOCMS_API_URL so no
-// per-site configuration is needed.
+// The editor origin is derived from NDOCMS_API_URL. The render route passes
+// it as a prop (it reads the Cloudflare runtime env); the import.meta.env
+// fallback covers local dev.
+
+interface Props {
+    editorOrigin?: string | null;
+}
 
 const apiUrl = import.meta.env.NDOCMS_API_URL as string | undefined;
-const editorOrigin = apiUrl ? new URL(apiUrl).origin : null;
+const editorOrigin = Astro.props.editorOrigin ?? (apiUrl ? new URL(apiUrl).origin : null);
 ---
 
 {editorOrigin && <script type="application/json" id="ndocms-bridge-config" set:html={JSON.stringify({ editorOrigin })} />}
