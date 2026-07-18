@@ -51,6 +51,84 @@ function stripStega(text: string): string {
     return text.replace(STEGA_STRIP_RE, '');
 }
 
+// Inline markup inside rich-text blocks comes exclusively from the kit's own
+// renderer (renderMarks in richtext.ts), so it can be serialized back to
+// structured nodes losslessly. execCommand additions (b/i/strike) are
+// normalized through the same table.
+const INLINE_MARK_TAGS: Record<string, string> = {
+    STRONG: 'bold',
+    B: 'bold',
+    EM: 'italic',
+    I: 'italic',
+    S: 'strike',
+    DEL: 'strike',
+    STRIKE: 'strike',
+};
+
+interface RichNode {
+    type: string;
+    text?: string;
+    marks?: { type: string; attrs?: Record<string, unknown> }[];
+}
+
+function serializeInline(el: Element, inherited: RichNode['marks'] = []): RichNode[] {
+    const out: RichNode[] = [];
+    for (const child of Array.from(el.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) {
+            const text = stripStega(child.nodeValue ?? '');
+            if (text !== '') {
+                out.push({ type: 'text', text, ...(inherited && inherited.length > 0 ? { marks: inherited.map((m) => ({ ...m })) } : {}) });
+            }
+            continue;
+        }
+        if (!(child instanceof Element)) continue;
+        let marks = inherited ?? [];
+        const markType = INLINE_MARK_TAGS[child.tagName];
+        if (markType) {
+            marks = [...marks.filter((m) => m.type !== markType), { type: markType }];
+        } else if (child.tagName === 'A') {
+            marks = [...marks.filter((m) => m.type !== 'link'), { type: 'link', attrs: { href: child.getAttribute('href') ?? '#' } }];
+        }
+        out.push(...serializeInline(child, marks));
+    }
+    // Merge adjacent nodes with identical marks, so repeated toggling never
+    // fragments the stored structure.
+    const merged: RichNode[] = [];
+    for (const node of out) {
+        const prev = merged[merged.length - 1];
+        if (prev && JSON.stringify(prev.marks ?? []) === JSON.stringify(node.marks ?? [])) {
+            prev.text = (prev.text ?? '') + (node.text ?? '');
+        } else {
+            merged.push(node);
+        }
+    }
+    return merged;
+}
+
+// A rich-text BLOCK (paragraph, list item, heading) contains only text and
+// inline mark elements; its parent does not. That block is the single
+// editing surface for the whole paragraph.
+function isInlineOnly(el: Element): boolean {
+    return Array.from(el.childNodes).every(
+        (node) =>
+            node.nodeType === Node.TEXT_NODE ||
+            (node instanceof Element &&
+                (node.tagName in INLINE_MARK_TAGS || node.tagName === 'A' || node.tagName === 'SPAN' || node.tagName === 'BR')),
+    );
+}
+
+function markersIn(root: Element): { sliceId: string; path: string }[] {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const found: { sliceId: string; path: string }[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if ((node.nodeValue ?? '').includes(STEGA_PREFIX)) {
+            const decoded = decodeStega(node.nodeValue ?? '');
+            if (decoded) found.push(decoded);
+        }
+    }
+    return found;
+}
+
 const BUTTON_BASE =
     'display:flex;align-items:center;justify-content:center;box-sizing:border-box;' +
     'background:#ffffff;border:1px solid #d1d5db;border-radius:9999px;color:#4b5563;' +
@@ -264,20 +342,52 @@ export function initPreviewBridge(): void {
         return target.closest('[data-ndocms-slice]')?.getAttribute('data-ndocms-slice') ?? null;
     }
 
-    // The exact text node under the double-click, when it carries a marker.
-    // This targets one annotated value even when it shares its parent with
-    // other children (decorative spans, <strong> siblings in rich text).
-    function markedTextNodeAt(x: number, y: number): Text | null {
+    // The exact text node (and caret offset) under the double-click, when it
+    // carries a marker. This targets one annotated value even when it shares
+    // its parent with other children (decorative spans, <strong> siblings).
+    function markedTextNodeAt(x: number, y: number): { node: Text; offset: number } | null {
         const doc = document as Document & {
-            caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node } | null;
+            caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
         };
         let node: Node | null = null;
+        let offset = 0;
         if (typeof doc.caretRangeFromPoint === 'function') {
-            node = doc.caretRangeFromPoint(x, y)?.startContainer ?? null;
+            const range = doc.caretRangeFromPoint(x, y);
+            node = range?.startContainer ?? null;
+            offset = range?.startOffset ?? 0;
         } else if (typeof doc.caretPositionFromPoint === 'function') {
-            node = doc.caretPositionFromPoint(x, y)?.offsetNode ?? null;
+            const position = doc.caretPositionFromPoint(x, y);
+            node = position?.offsetNode ?? null;
+            offset = position?.offset ?? 0;
         }
-        return node instanceof Text && (node.nodeValue ?? '').includes(STEGA_PREFIX) ? node : null;
+        return node instanceof Text && (node.nodeValue ?? '').includes(STEGA_PREFIX) ? { node, offset } : null;
+    }
+
+    const RICH_TEXT_PATH_RE = /\.content\.\d+\.text$/;
+
+    // The whole block around a rich-text text node, when every marker inside
+    // it belongs to the same content array. Editing then covers the full
+    // paragraph with formatting intact instead of one split segment.
+    function richBlockFor(textNode: Text, decodedPath: string): { block: HTMLElement; contentPath: string } | null {
+        let block = textNode.parentElement;
+        if (!block) return null;
+        while (
+            block.parentElement &&
+            block.parentElement !== document.body &&
+            !block.hasAttribute('data-ndocms-slice') &&
+            isInlineOnly(block.parentElement)
+        ) {
+            block = block.parentElement;
+        }
+        if (!isInlineOnly(block)) return null;
+
+        const contentPath = decodedPath.split('.').slice(0, -2).join('.');
+        const markers = markersIn(block);
+        if (markers.length === 0) return null;
+        for (const marker of markers) {
+            if (marker.path.split('.').slice(0, -2).join('.') !== contentPath) return null;
+        }
+        return { block, contentPath };
     }
 
     // Fallback when caret lookup finds nothing: walk up from the
@@ -352,93 +462,8 @@ export function initPreviewBridge(): void {
             send({ type: 'ndocms:inline-edit', sliceId, path, value });
         };
 
-        function markToggle(mark: InlineMarkType): HTMLButtonElement {
-            const labels: Record<InlineMarkType, [string, string]> = {
-                bold: ['B', 'Vet'],
-                italic: ['I', 'Cursief'],
-                strike: ['S', 'Doorhalen'],
-                link: ['', 'Link'],
-            };
-            const [label, title] = labels[mark];
-            const button = overlayButton(label, title, () => undefined);
-            if (mark === 'bold') button.style.fontWeight = '700';
-            if (mark === 'italic') button.style.fontStyle = 'italic';
-            if (mark === 'strike') button.style.textDecoration = 'line-through';
-            if (mark === 'link') button.innerHTML = LINK_SVG;
-
-            const computed = window.getComputedStyle(el);
-            let active =
-                mark === 'bold' ? parseInt(computed.fontWeight, 10) >= 600 :
-                mark === 'italic' ? computed.fontStyle === 'italic' :
-                mark === 'strike' ? el.closest('s, del') !== null || computed.textDecorationLine.includes('line-through') :
-                el.closest('a') !== null;
-
-            const paint = () => {
-                button.style.background = active ? '#eef2ff' : '#ffffff';
-                button.style.borderColor = active ? '#6366f1' : '#d1d5db';
-                button.style.color = active ? '#4f46e5' : '#4b5563';
-            };
-            paint();
-            // Runs after overlayButton's own mouseleave reset, so the active
-            // state wins again once the pointer leaves.
-            button.addEventListener('mouseleave', paint);
-            button.addEventListener('mousedown', (event) => event.preventDefault());
-            button.addEventListener('click', () => {
-                const value = stripStega(el.textContent ?? '');
-
-                // Selection within the edited text: mark only that range.
-                // Without a selection the whole segment toggles in place.
-                let start = 0;
-                let end = value.length;
-                const selection = window.getSelection();
-                if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0);
-                    if (
-                        el.contains(range.startContainer) &&
-                        range.startContainer === range.endContainer &&
-                        range.startContainer.nodeType === Node.TEXT_NODE
-                    ) {
-                        start = range.startOffset;
-                        end = range.endOffset;
-                    }
-                }
-                const partial = start > 0 || end < value.length;
-
-                let href: string | undefined;
-                if (mark === 'link' && (partial || !active)) {
-                    href = window.prompt('URL') ?? undefined;
-                    if (!href) {
-                        el.focus();
-                        return;
-                    }
-                }
-
-                if (partial) {
-                    // Splitting the node restructures the document: commit
-                    // and end the session, the re-render shows the result.
-                    send({ type: 'ndocms:inline-mark', sliceId, path, mark, active: !active, href, start, end, value });
-                    el.blur();
-                    return;
-                }
-
-                active = !active;
-                if (mark === 'bold') el.style.fontWeight = active ? '700' : '400';
-                if (mark === 'italic') el.style.fontStyle = active ? 'italic' : 'normal';
-                if (mark === 'strike') el.style.textDecoration = active ? 'line-through' : 'none';
-                if (mark === 'link') el.style.textDecoration = active ? 'underline' : 'none';
-                paint();
-                positionToolbar();
-                send({ type: 'ndocms:inline-mark', sliceId, path, mark, active, href, start, end, value });
-                el.focus();
-            });
-            return button;
-        }
-
         editToolbarFill = (config) => {
             toolbar.replaceChildren();
-            for (const mark of config.marks) {
-                toolbar.appendChild(markToggle(mark));
-            }
             if (config.canClear) {
                 // Clearing commits the empty value and ends the session: the
                 // re-render then hides the element like the live site would.
@@ -487,6 +512,152 @@ export function initPreviewBridge(): void {
                 el.replaceWith(document.createTextNode(unchanged ? originalText : finalText));
             } else if (unchanged) {
                 el.textContent = originalText;
+            }
+            send({ type: 'ndocms:inline-edit-end' });
+        };
+        el.addEventListener('input', onInput);
+        el.addEventListener('keydown', onKeydown);
+        el.addEventListener('blur', finish, { once: true });
+    }
+
+    // Rich-text editing: the whole block (paragraph, list item, heading) is
+    // one contenteditable surface with its formatting intact. B/I/S/link run
+    // as real selection commands; every change serializes the block's inline
+    // DOM back to structured nodes and replaces the block's content array.
+    function startRichEdit(el: HTMLElement, sliceId: string, contentPath: string, caretNode?: Text, caretOffset?: number): void {
+        editingElement = el;
+        const originalHtml = el.innerHTML;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            node.nodeValue = stripStega(node.nodeValue ?? '');
+        }
+        el.setAttribute('contenteditable', 'true');
+        try {
+            // Tags (b/i/strike), not style spans — the serializer reads tags.
+            document.execCommand('styleWithCSS', false, 'false');
+        } catch {
+            // Older engines; execCommand output stays parseable either way.
+        }
+        el.style.outline = EDITING_OUTLINE;
+        el.style.outlineOffset = '2px';
+        el.focus();
+
+        const selection = window.getSelection();
+        const range = document.createRange();
+        if (caretNode && caretNode.isConnected) {
+            range.setStart(caretNode, Math.min(caretOffset ?? 0, caretNode.nodeValue?.length ?? 0));
+            range.collapse(true);
+        } else {
+            range.selectNodeContents(el);
+            range.collapse(false);
+        }
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        send({ type: 'ndocms:inline-edit-start', sliceId, path: contentPath });
+
+        const toolbar = document.createElement('div');
+        toolbar.style.cssText =
+            'position:absolute;display:none;gap:4px;padding:3px;background:#ffffff;z-index:2147483001;' +
+            'border:1px solid #d1d5db;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
+        const positionToolbar = () => {
+            const rect = el.getBoundingClientRect();
+            toolbar.style.top = `${Math.max(rect.top + window.scrollY - 42, 4)}px`;
+            toolbar.style.left = `${Math.max(rect.left + window.scrollX, 4)}px`;
+        };
+
+        const initialJson = JSON.stringify(serializeInline(el));
+        let lastPushed = initialJson;
+        const push = () => {
+            const nodes = serializeInline(el);
+            const json = JSON.stringify(nodes);
+            if (json === lastPushed) return;
+            lastPushed = json;
+            send({ type: 'ndocms:inline-rich', sliceId, path: contentPath, nodes });
+        };
+
+        function execButton(mark: InlineMarkType): HTMLButtonElement {
+            const labels: Record<InlineMarkType, [string, string]> = {
+                bold: ['B', 'Vet'],
+                italic: ['I', 'Cursief'],
+                strike: ['S', 'Doorhalen'],
+                link: ['', 'Link'],
+            };
+            const [label, title] = labels[mark];
+            const button = overlayButton(label, title, () => undefined);
+            if (mark === 'bold') button.style.fontWeight = '700';
+            if (mark === 'italic') button.style.fontStyle = 'italic';
+            if (mark === 'strike') button.style.textDecoration = 'line-through';
+            if (mark === 'link') button.innerHTML = LINK_SVG;
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => {
+                const sel = window.getSelection();
+                // No usable selection: apply to the whole block.
+                if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !el.contains(sel.anchorNode)) {
+                    const all = document.createRange();
+                    all.selectNodeContents(el);
+                    sel?.removeAllRanges();
+                    sel?.addRange(all);
+                }
+                if (mark === 'link') {
+                    const anchorEl = sel?.anchorNode instanceof Element ? sel.anchorNode : sel?.anchorNode?.parentElement;
+                    if (anchorEl?.closest('a')) {
+                        document.execCommand('unlink');
+                    } else {
+                        const href = window.prompt('URL');
+                        if (!href) {
+                            el.focus();
+                            return;
+                        }
+                        document.execCommand('createLink', false, href);
+                    }
+                } else {
+                    document.execCommand({ bold: 'bold', italic: 'italic', strike: 'strikeThrough' }[mark]);
+                }
+                push();
+                positionToolbar();
+                el.focus();
+            });
+            return button;
+        }
+
+        editToolbarFill = (config) => {
+            toolbar.replaceChildren();
+            for (const mark of config.marks) {
+                toolbar.appendChild(execButton(mark));
+            }
+            toolbar.style.display = toolbar.childElementCount > 0 ? 'flex' : 'none';
+            positionToolbar();
+        };
+        editToolbar = toolbar;
+        document.documentElement.appendChild(toolbar);
+
+        const onInput = () => {
+            push();
+            positionToolbar();
+        };
+        const onKeydown = (event: KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                el.blur();
+            }
+        };
+        const finish = () => {
+            el.removeEventListener('input', onInput);
+            el.removeEventListener('keydown', onKeydown);
+            el.removeAttribute('contenteditable');
+            el.style.outline = '';
+            el.style.outlineOffset = '';
+            toolbar.remove();
+            editToolbar = null;
+            editToolbarFill = null;
+            editingElement = null;
+            push();
+            // Unchanged block: restore the marker-carrying markup so it stays
+            // editable without a re-render.
+            if (JSON.stringify(serializeInline(el)) === initialJson && lastPushed === initialJson) {
+                el.innerHTML = originalHtml;
             }
             send({ type: 'ndocms:inline-edit-end' });
         };
@@ -679,17 +850,25 @@ export function initPreviewBridge(): void {
                 }
 
                 // Prefer the exact text node under the pointer: it survives
-                // decorative siblings and mixed rich-text paragraphs. The
-                // temporary wrapper is removed again when the edit ends.
-                const textNode = markedTextNodeAt(event.clientX, event.clientY);
-                if (textNode) {
-                    const decoded = decodeStega(textNode.nodeValue ?? '');
+                // decorative siblings. Rich text opens the whole block as one
+                // formatted surface; plain text fields get a temporary
+                // wrapper (removed again when the edit ends).
+                const hit = markedTextNodeAt(event.clientX, event.clientY);
+                if (hit) {
+                    const decoded = decodeStega(hit.node.nodeValue ?? '');
                     if (decoded) {
                         event.preventDefault();
                         event.stopPropagation();
+                        if (RICH_TEXT_PATH_RE.test(decoded.path)) {
+                            const rich = richBlockFor(hit.node, decoded.path);
+                            if (rich) {
+                                startRichEdit(rich.block, decoded.sliceId, rich.contentPath, hit.node, hit.offset);
+                                return;
+                            }
+                        }
                         const wrapper = document.createElement('span');
-                        textNode.parentNode?.insertBefore(wrapper, textNode);
-                        wrapper.appendChild(textNode);
+                        hit.node.parentNode?.insertBefore(wrapper, hit.node);
+                        wrapper.appendChild(hit.node);
                         startInlineEdit({ el: wrapper, ...decoded }, true);
                         return;
                     }
