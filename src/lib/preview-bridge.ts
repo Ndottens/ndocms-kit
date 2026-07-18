@@ -237,12 +237,27 @@ export function initPreviewBridge(): void {
         return target.closest('[data-ndocms-slice]')?.getAttribute('data-ndocms-slice') ?? null;
     }
 
-    // Walk up from the double-clicked node to the element that renders
-    // exactly one annotated value: a leaf element (no element children)
-    // whose text carries exactly one stega marker. Mixed rich-text
-    // paragraphs (plain runs next to <strong>/<a> children) never qualify
-    // as a whole, so their structure cannot be flattened by an inline edit;
-    // their formatted segments are leaf elements and remain editable.
+    // The exact text node under the double-click, when it carries a marker.
+    // This targets one annotated value even when it shares its parent with
+    // other children (decorative spans, <strong> siblings in rich text).
+    function markedTextNodeAt(x: number, y: number): Text | null {
+        const doc = document as Document & {
+            caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node } | null;
+        };
+        let node: Node | null = null;
+        if (typeof doc.caretRangeFromPoint === 'function') {
+            node = doc.caretRangeFromPoint(x, y)?.startContainer ?? null;
+        } else if (typeof doc.caretPositionFromPoint === 'function') {
+            node = doc.caretPositionFromPoint(x, y)?.offsetNode ?? null;
+        }
+        return node instanceof Text && (node.nodeValue ?? '').includes(STEGA_PREFIX) ? node : null;
+    }
+
+    // Fallback when caret lookup finds nothing: walk up from the
+    // double-clicked node to the element that renders exactly one annotated
+    // value: a leaf element (no element children) whose text carries exactly
+    // one stega marker. Mixed rich-text paragraphs never qualify as a whole,
+    // so their structure cannot be flattened by an inline edit.
     function findEditableAt(target: EventTarget | null): { el: HTMLElement; sliceId: string; path: string } | null {
         let el: Element | null = target instanceof Element ? target : null;
         while (el && el !== document.body) {
@@ -258,7 +273,10 @@ export function initPreviewBridge(): void {
         return null;
     }
 
-    function startInlineEdit({ el, sliceId, path }: { el: HTMLElement; sliceId: string; path: string }): void {
+    function startInlineEdit(
+        { el, sliceId, path }: { el: HTMLElement; sliceId: string; path: string },
+        unwrapAfter = false,
+    ): void {
         editingElement = el;
         // Strip the invisible markers before editing so the caret never
         // lands inside them; the next render re-annotates the fresh value.
@@ -294,6 +312,9 @@ export function initPreviewBridge(): void {
             el.style.outlineOffset = '';
             editingElement = null;
             pushValue();
+            if (unwrapAfter) {
+                el.replaceWith(document.createTextNode(el.textContent ?? ''));
+            }
             send({ type: 'ndocms:inline-edit-end' });
         };
         el.addEventListener('input', onInput);
@@ -466,6 +487,23 @@ export function initPreviewBridge(): void {
                     event.stopPropagation();
                     send({ type: 'ndocms:image-edit', src: event.target.currentSrc || event.target.src });
                     return;
+                }
+
+                // Prefer the exact text node under the pointer: it survives
+                // decorative siblings and mixed rich-text paragraphs. The
+                // temporary wrapper is removed again when the edit ends.
+                const textNode = markedTextNodeAt(event.clientX, event.clientY);
+                if (textNode) {
+                    const decoded = decodeStega(textNode.nodeValue ?? '');
+                    if (decoded) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const wrapper = document.createElement('span');
+                        textNode.parentNode?.insertBefore(wrapper, textNode);
+                        wrapper.appendChild(textNode);
+                        startInlineEdit({ el: wrapper, ...decoded }, true);
+                        return;
+                    }
                 }
 
                 const editable = findEditableAt(event.target);
