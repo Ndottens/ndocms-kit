@@ -12,6 +12,43 @@ const PROTOCOL_VERSION = 1;
 
 const SELECTED_OUTLINE = '2px solid #6366f1';
 const HOVER_OUTLINE = '2px dashed rgba(99, 102, 241, 0.65)';
+const EDITING_OUTLINE = '2px solid #10b981';
+
+// Stega marker (mirrors app/Support/PreviewStega.php): invisible prefix
+// followed by a base-4 sequence of zero-width characters that encodes
+// "<sliceId>|<fieldPath>" inside the rendered text itself.
+const STEGA_PREFIX = '\u2063\u2062';
+const STEGA_ALPHABET = ['\u200B', '\u200C', '\u200D', '\uFEFF'];
+const STEGA_STRIP_RE = /[\u200B\u200C\u200D\uFEFF\u2062\u2063]/g;
+
+function decodeStega(text: string): { sliceId: string; path: string } | null {
+    const start = text.indexOf(STEGA_PREFIX);
+    if (start === -1) return null;
+
+    let byte = 0;
+    let bits = 0;
+    const bytes: number[] = [];
+    for (const char of text.slice(start + STEGA_PREFIX.length)) {
+        const index = STEGA_ALPHABET.indexOf(char);
+        if (index === -1) break;
+        byte = (byte << 2) | index;
+        bits += 2;
+        if (bits === 8) {
+            bytes.push(byte);
+            byte = 0;
+            bits = 0;
+        }
+    }
+
+    const payload = String.fromCharCode(...bytes);
+    const separator = payload.indexOf('|');
+    if (separator === -1) return null;
+    return { sliceId: payload.slice(0, separator), path: payload.slice(separator + 1) };
+}
+
+function stripStega(text: string): string {
+    return text.replace(STEGA_STRIP_RE, '');
+}
 
 const BUTTON_BASE =
     'display:flex;align-items:center;justify-content:center;box-sizing:border-box;' +
@@ -65,6 +102,7 @@ export function initPreviewBridge(): void {
     let hoveredId: string | null = null;
     let lastReportedHoverId: string | null = null;
     let scriptRunCounter = 0;
+    let editingElement: HTMLElement | null = null;
 
     // The overlay lives on <html>, not <body>: the body is replaced on every
     // render and the overlay must survive the swap. Children are positioned
@@ -199,6 +237,69 @@ export function initPreviewBridge(): void {
         return target.closest('[data-ndocms-slice]')?.getAttribute('data-ndocms-slice') ?? null;
     }
 
+    // Walk up from the double-clicked node to the element whose OWN text
+    // nodes carry a stega marker: that element renders exactly one field
+    // value and becomes the inline editing surface.
+    function findEditableAt(target: EventTarget | null): { el: HTMLElement; sliceId: string; path: string } | null {
+        let el: Element | null = target instanceof Element ? target : null;
+        while (el && el !== document.body) {
+            const ownText = Array.from(el.childNodes)
+                .filter((node) => node.nodeType === Node.TEXT_NODE)
+                .map((node) => node.nodeValue ?? '')
+                .join('');
+            if (ownText.includes(STEGA_PREFIX) && el instanceof HTMLElement) {
+                const decoded = decodeStega(el.textContent ?? '');
+                if (decoded) return { el, ...decoded };
+                return null;
+            }
+            el = el.parentElement;
+        }
+        return null;
+    }
+
+    function startInlineEdit({ el, sliceId, path }: { el: HTMLElement; sliceId: string; path: string }): void {
+        editingElement = el;
+        // Strip the invisible markers before editing so the caret never
+        // lands inside them; the next render re-annotates the fresh value.
+        el.textContent = stripStega(el.textContent ?? '');
+        el.setAttribute('contenteditable', 'plaintext-only');
+        if (!el.isContentEditable) el.setAttribute('contenteditable', 'true');
+        el.style.outline = EDITING_OUTLINE;
+        el.style.outlineOffset = '2px';
+        el.focus();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        send({ type: 'ndocms:inline-edit-start' });
+
+        const pushValue = () => send({ type: 'ndocms:inline-edit', sliceId, path, value: stripStega(el.textContent ?? '') });
+        const onInput = () => pushValue();
+        const onKeydown = (event: KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                el.blur();
+            }
+        };
+        const finish = () => {
+            el.removeEventListener('input', onInput);
+            el.removeEventListener('keydown', onKeydown);
+            el.removeAttribute('contenteditable');
+            el.style.outline = '';
+            el.style.outlineOffset = '';
+            editingElement = null;
+            pushValue();
+            send({ type: 'ndocms:inline-edit-end' });
+        };
+        el.addEventListener('input', onInput);
+        el.addEventListener('keydown', onKeydown);
+        el.addEventListener('blur', finish, { once: true });
+    }
+
     // Astro bundles CSS per page: the empty shell does not include the slice
     // styles the rendered result needs, so missing head assets are merged in
     // on every swap. Bridge-added inline styles are tagged and replaced each
@@ -291,6 +392,13 @@ export function initPreviewBridge(): void {
         }
         if (abort.signal.aborted) return;
 
+        // Never swap the body away under an active inline edit; the editor
+        // re-renders once the edit session ends anyway.
+        if (editingElement) {
+            send({ type: 'ndocms:rendered', requestId: message.requestId, sliceIds: renderedSliceIds() });
+            return;
+        }
+
         const parsed = new DOMParser().parseFromString(html, 'text/html');
         mergeHeadAssets(parsed.head);
 
@@ -336,6 +444,8 @@ export function initPreviewBridge(): void {
         'click',
         (event) => {
             if (event.target instanceof Node && overlay.contains(event.target)) return;
+            // Clicks inside the active inline edit must reach the caret.
+            if (editingElement && event.target instanceof Node && editingElement.contains(event.target)) return;
             event.preventDefault();
             event.stopPropagation();
             if (!plainMode) send({ type: 'ndocms:slice-click', sliceId: closestSliceId(event.target) });
@@ -344,6 +454,28 @@ export function initPreviewBridge(): void {
     );
 
     if (!plainMode) {
+        document.addEventListener(
+            'dblclick',
+            (event) => {
+                if (event.target instanceof Node && overlay.contains(event.target)) return;
+                if (editingElement) return;
+
+                if (event.target instanceof HTMLImageElement) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    send({ type: 'ndocms:image-edit', src: event.target.currentSrc || event.target.src });
+                    return;
+                }
+
+                const editable = findEditableAt(event.target);
+                if (!editable) return;
+                event.preventDefault();
+                event.stopPropagation();
+                startInlineEdit(editable);
+            },
+            true,
+        );
+
         document.addEventListener('mouseover', (event) => {
             // Hovering the overlay (toolbar/insert buttons) keeps the section hover.
             if (event.target instanceof Node && overlay.contains(event.target)) return;
