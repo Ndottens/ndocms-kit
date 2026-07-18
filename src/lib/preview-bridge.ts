@@ -59,6 +59,7 @@ export function initPreviewBridge(): void {
     let selectedId: string | null = null;
     let hoveredId: string | null = null;
     let lastReportedHoverId: string | null = null;
+    let scriptRunCounter = 0;
 
     // The overlay lives on <html>, not <body>: the body is replaced on every
     // render and the overlay must survive the swap. Children are positioned
@@ -218,6 +219,41 @@ export function initPreviewBridge(): void {
         }
     }
 
+    // Scripts parsed by DOMParser never execute, so slice interactivity
+    // (booking widget, form setup, nav toggle) would stay dead after a body
+    // swap. Re-inject executable clones of every script the shell doesn't
+    // already carry; the cache-buster forces modules to actually re-run.
+    function reExecuteScripts(scripts: HTMLScriptElement[]): void {
+        scriptRunCounter += 1;
+        const shellSrcs = new Set(
+            Array.from(document.head.querySelectorAll<HTMLScriptElement>('script[src]')).map(
+                (script) => script.src.split('?')[0],
+            ),
+        );
+        const shellInline = new Set(
+            Array.from(document.head.querySelectorAll('script:not([src])')).map((script) => script.textContent),
+        );
+
+        for (const script of scripts) {
+            const type = script.getAttribute('type');
+            if (type && type !== 'module' && type !== 'text/javascript') continue;
+
+            const clone = document.createElement('script');
+            if (type) clone.type = type;
+
+            const src = script.getAttribute('src');
+            if (src) {
+                const absolute = new URL(src, window.location.href).href;
+                if (shellSrcs.has(absolute.split('?')[0])) continue;
+                clone.src = `${absolute}${absolute.includes('?') ? '&' : '?'}ndocmsRun=${scriptRunCounter}`;
+            } else {
+                if (!script.textContent || shellInline.has(script.textContent)) continue;
+                clone.textContent = script.textContent;
+            }
+            document.body.appendChild(clone);
+        }
+    }
+
     async function render(message: RenderMessage): Promise<void> {
         renderAbort?.abort();
         const abort = new AbortController();
@@ -243,9 +279,12 @@ export function initPreviewBridge(): void {
         const parsed = new DOMParser().parseFromString(html, 'text/html');
         mergeHeadAssets(parsed.head);
 
+        // Collect scripts before adoptNode moves the body out of the parsed document.
+        const scripts = Array.from(parsed.querySelectorAll('script'));
         const scrollY = window.scrollY;
         document.body = document.adoptNode(parsed.body);
         window.scrollTo({ top: scrollY, behavior: 'instant' });
+        reExecuteScripts(scripts);
         resizeObserver?.disconnect();
         resizeObserver?.observe(document.body);
         applyHighlights();
