@@ -69,7 +69,7 @@ const mainItems = resolved.filter((r) => !isNav(r) && !isFooter(r));
     resolved.filter(isNav).map((r) => (
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
-            <div id={r.anchorId} class="scroll-mt-20">
+            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
                 <r.Component slice={r.slice} surface={r.surface} />
             </div>
         </>
@@ -81,7 +81,7 @@ const mainItems = resolved.filter((r) => !isNav(r) && !isFooter(r));
             {mainItems.map((r) => (
                 <>
                     {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
-                    <div id={r.anchorId} class="scroll-mt-20">
+                    <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
                         <r.Component slice={r.slice} surface={r.surface} />
                     </div>
                 </>
@@ -93,7 +93,7 @@ const mainItems = resolved.filter((r) => !isNav(r) && !isFooter(r));
     resolved.filter(isFooter).map((r) => (
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
-            <div id={r.anchorId} class="scroll-mt-20">
+            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
                 <r.Component slice={r.slice} surface={r.surface} />
             </div>
         </>
