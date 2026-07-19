@@ -6,6 +6,7 @@
 // forms on the page. Server-side the endpoint re-checks module entitlement,
 // Turnstile, the honeypot and rate limiting, so this is purely UX.
 
+import { langFromLocale, t, type Lang } from './i18n';
 import { loadTurnstileOnInteraction, resetTurnstile, waitForTurnstileToken } from './turnstile';
 
 interface SubmitResult {
@@ -18,9 +19,10 @@ async function post(
     formType: string,
     payload: Record<string, string>,
     token: string | null,
+    lang: Lang,
 ): Promise<SubmitResult> {
     if (!endpoint) {
-        return { ok: false, error: 'Formulier is nog niet gekoppeld.' };
+        return { ok: false, error: t(lang, 'form.notLinked') };
     }
     try {
         const response = await fetch(endpoint, {
@@ -32,14 +34,14 @@ async function post(
             return { ok: true };
         }
         if (response.status === 422) {
-            return { ok: false, error: 'Controleer de ingevulde gegevens.' };
+            return { ok: false, error: t(lang, 'form.invalid') };
         }
         if (response.status === 429) {
-            return { ok: false, error: 'Te veel pogingen. Probeer het over een minuut opnieuw.' };
+            return { ok: false, error: t(lang, 'form.throttled') };
         }
-        return { ok: false, error: 'Er ging iets mis. Probeer het later opnieuw.' };
+        return { ok: false, error: t(lang, 'form.error') };
     } catch {
-        return { ok: false, error: 'Geen verbinding. Probeer het later opnieuw.' };
+        return { ok: false, error: t(lang, 'form.offline') };
     }
 }
 
@@ -60,11 +62,12 @@ export function setupForms(): void {
         form.dataset.ndoWired = 'true';
         loadTurnstileOnInteraction(form);
 
+        const lang = langFromLocale(form.dataset.lang);
         const endpoint = form.dataset.endpoint ?? '';
         const formType = form.dataset.formType ?? '';
         // Overridable per form: a newsletter signup says "check your inbox"
         // (double opt-in) instead of the generic thank-you.
-        const successMessage = form.dataset.successMessage ?? 'Bedankt, we hebben je bericht ontvangen.';
+        const successMessage = form.dataset.successMessage ?? t(lang, 'form.success');
         const status = form.querySelector<HTMLElement>('[data-form-status]');
         const button = form.querySelector<HTMLButtonElement>('button[type=submit]');
 
@@ -92,14 +95,14 @@ export function setupForms(): void {
             if (button) {
                 button.disabled = true;
             }
-            setStatus(status, 'Versturen…', 'pending');
+            setStatus(status, t(lang, 'form.sending'), 'pending');
 
             let token = (data.get('cf-turnstile-response') as string) || null;
             if (!token && form.querySelector('.cf-turnstile')) {
                 token = await waitForTurnstileToken(form);
             }
 
-            const result = await post(endpoint, formType, payload, token);
+            const result = await post(endpoint, formType, payload, token, lang);
 
             if (button) {
                 button.disabled = false;
@@ -109,7 +112,7 @@ export function setupForms(): void {
                 setStatus(status, successMessage, 'ok');
                 resetTurnstile();
             } else {
-                setStatus(status, result.error ?? 'Er ging iets mis.', 'error');
+                setStatus(status, result.error ?? t(lang, 'form.errorShort'), 'error');
             }
         });
     });

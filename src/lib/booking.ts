@@ -8,6 +8,7 @@
 // the endpoints re-check module entitlement, availability, Turnstile, the
 // honeypot and rate limiting — everything here is purely UX.
 
+import { langFromLocale, localeTag, t, weekdays, type Lang } from './i18n';
 import { loadTurnstileOnInteraction, resetTurnstile, waitForTurnstileToken } from './turnstile';
 
 interface Slot {
@@ -26,8 +27,6 @@ interface Availability {
     days: DayAvailability[];
 }
 
-const WEEKDAYS = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
-
 function monthOf(date: string): string {
     return date.slice(0, 7);
 }
@@ -43,13 +42,13 @@ function shiftMonth(month: string, delta: number): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function monthLabel(month: string): string {
+function monthLabel(month: string, locale: string): string {
     const [year, mon] = month.split('-').map(Number);
-    return new Date(year, mon - 1, 1).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+    return new Date(year, mon - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 }
 
-function dayLabel(date: string): string {
-    return new Date(`${date}T00:00:00`).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+function dayLabel(date: string, locale: string): string {
+    return new Date(`${date}T00:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 // Demo availability for fixture/preview mode (no endpoints configured):
@@ -108,6 +107,8 @@ export function setupBooking(): void {
 }
 
 function wire(root: HTMLElement): void {
+    const lang: Lang = langFromLocale(root.dataset.lang);
+    const locale = localeTag(lang);
     const availabilityEndpoint = root.dataset.availabilityEndpoint ?? '';
     const requestEndpoint = root.dataset.requestEndpoint ?? '';
 
@@ -170,13 +171,13 @@ function wire(root: HTMLElement): void {
     }
 
     async function loadMonth(): Promise<void> {
-        setStatus('Beschikbaarheid laden…', 'pending');
+        setStatus(t(lang, 'booking.loading'), 'pending');
         daysEl!.textContent = '';
         slotsEl!.textContent = '';
         selectedDate = '';
         availability = await fetchAvailability();
         if (!availability) {
-            setStatus('De agenda kon niet geladen worden. Probeer het later opnieuw.', 'error');
+            setStatus(t(lang, 'booking.loadError'), 'error');
             return;
         }
         setStatus('', '');
@@ -188,7 +189,7 @@ function wire(root: HTMLElement): void {
             return;
         }
         if (monthLabelEl) {
-            monthLabelEl.textContent = monthLabel(month);
+            monthLabelEl.textContent = monthLabel(month, locale);
         }
         if (prevButton) {
             prevButton.disabled = month <= monthOf(availability.horizon.from);
@@ -201,7 +202,7 @@ function wire(root: HTMLElement): void {
         slotsEl!.textContent = '';
 
         const grid = el('div', 'grid grid-cols-7 gap-1');
-        WEEKDAYS.forEach((label) => {
+        weekdays(lang).forEach((label) => {
             grid.appendChild(el('span', 'py-1 text-center text-xs font-medium uppercase tracking-wide text-ink-muted', label));
         });
 
@@ -237,7 +238,7 @@ function wire(root: HTMLElement): void {
 
     function renderSlots(day: DayAvailability): void {
         slotsEl!.textContent = '';
-        slotsEl!.appendChild(el('p', 'text-sm font-medium text-ink', dayLabel(day.date)));
+        slotsEl!.appendChild(el('p', 'text-sm font-medium text-ink', dayLabel(day.date, locale)));
         const list = el('div', 'mt-2 flex flex-wrap gap-2');
         day.slots.forEach((slot) => {
             const button = el('button', 'min-h-[44px] rounded-lg border border-ink/15 bg-surface px-4 text-sm font-semibold tabular-nums text-ink transition hover:border-primary hover:text-primary', slot.start);
@@ -245,7 +246,7 @@ function wire(root: HTMLElement): void {
             button.addEventListener('click', () => {
                 selectedSlot = slot;
                 if (summaryEl) {
-                    summaryEl.textContent = `${service.name} — ${dayLabel(day.date)}, ${slot.start}–${slot.end}`;
+                    summaryEl.textContent = `${service.name} — ${dayLabel(day.date, locale)}, ${slot.start}–${slot.end}`;
                 }
                 show('details');
             });
@@ -304,7 +305,7 @@ function wire(root: HTMLElement): void {
         }
 
         if (!requestEndpoint) {
-            setStatus('Agenda is nog niet gekoppeld.', 'error');
+            setStatus(t(lang, 'booking.notLinked'), 'error');
             return;
         }
 
@@ -312,7 +313,7 @@ function wire(root: HTMLElement): void {
         if (button) {
             button.disabled = true;
         }
-        setStatus('Versturen…', 'pending');
+        setStatus(t(lang, 'form.sending'), 'pending');
 
         let token = (data.get('cf-turnstile-response') as string) || null;
         if (!token && form.querySelector('.cf-turnstile')) {
@@ -362,15 +363,15 @@ function wire(root: HTMLElement): void {
         }
         if (outcome === 'conflict') {
             show('schedule');
-            setStatus('Dit tijdstip is net geboekt. Kies een ander moment.', 'error');
+            setStatus(t(lang, 'booking.conflict'), 'error');
             void loadMonth();
             return;
         }
         const messages: Record<string, string> = {
-            invalid: 'Controleer de ingevulde gegevens.',
-            throttled: 'Te veel pogingen. Probeer het over een minuut opnieuw.',
-            error: 'Er ging iets mis. Probeer het later opnieuw.',
-            offline: 'Geen verbinding. Probeer het later opnieuw.',
+            invalid: t(lang, 'form.invalid'),
+            throttled: t(lang, 'form.throttled'),
+            error: t(lang, 'form.error'),
+            offline: t(lang, 'form.offline'),
         };
         setStatus(messages[outcome] ?? messages.error, 'error');
     });
