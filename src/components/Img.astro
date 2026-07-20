@@ -2,23 +2,49 @@
 // Standard image render. Always emits width/height so the browser reserves space
 // and the page doesn't shift while loading (good CLS). Above-the-fold images
 // (hero) should pass loading="eager"; everything else stays lazy.
+//
+// When the CMS published responsive variants, they become a srcset so the
+// browser downloads the smallest sharp version. Pass `sizes` when the image
+// renders narrower than the viewport (e.g. "(min-width: 1024px) 50vw, 100vw").
+//
+// A focal point set in the CMS media library becomes object-position, so
+// object-cover crops keep the important part of the image in view.
 import type { ImageValue } from '../lib/types';
 
 interface Props {
     image: ImageValue;
     class?: string;
     loading?: 'lazy' | 'eager';
+    sizes?: string;
 }
 
-const { image, class: className, loading = 'lazy' } = Astro.props;
+const { image, class: className, loading = 'lazy', sizes } = Astro.props;
+
+const variants = image.variants ?? [];
+const srcset = variants.length
+    ? [
+          ...variants.map((variant) => `${variant.url} ${variant.width}w`),
+          image.width ? `${image.url} ${image.width}w` : null,
+      ]
+          .filter(Boolean)
+          .join(', ')
+    : undefined;
+
+const focal =
+    image.focalX != null && image.focalY != null
+        ? `object-position: ${image.focalX}% ${image.focalY}%`
+        : undefined;
 ---
 
 <img
     src={image.url}
+    srcset={srcset}
+    sizes={srcset ? (sizes ?? '100vw') : undefined}
     alt={image.alt ?? ''}
     width={image.width ?? undefined}
     height={image.height ?? undefined}
     loading={loading}
     decoding="async"
+    style={focal}
     class={className}
 />

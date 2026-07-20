@@ -39,4 +39,12 @@ export interface ImageValue {
     alt?: string;
     width?: number | null;
     height?: number | null;
+    variants?: ImageVariant[];
+    focalX?: number | null;
+    focalY?: number | null;
+}
+
+export interface ImageVariant {
+    url: string;
+    width: number;
 }
