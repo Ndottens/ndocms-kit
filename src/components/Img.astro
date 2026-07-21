@@ -7,8 +7,11 @@
 // browser downloads the smallest sharp version. Pass `sizes` when the image
 // renders narrower than the viewport (e.g. "(min-width: 1024px) 50vw, 100vw").
 //
-// A focal point set in the CMS media library becomes object-position, so
-// object-cover crops keep the important part of the image in view.
+// A focal point (library default, or a per-placement override on the field)
+// becomes object-position, so object-cover crops keep the important part of
+// the image in view. A per-placement fit of 'contain' shows the full image
+// uncropped; the inline style deliberately overrides the slice's object-cover
+// class.
 import type { ImageValue } from '../lib/types';
 
 interface Props {
@@ -30,10 +33,14 @@ const srcset = variants.length
           .join(', ')
     : undefined;
 
-const focal =
-    image.focalX != null && image.focalY != null
-        ? `object-position: ${image.focalX}% ${image.focalY}%`
-        : undefined;
+const styleParts = [];
+if (image.focalX != null && image.focalY != null) {
+    styleParts.push(`object-position: ${image.focalX}% ${image.focalY}%`);
+}
+if (image.fit === 'contain') {
+    styleParts.push('object-fit: contain');
+}
+const style = styleParts.length ? styleParts.join('; ') : undefined;
 ---
 
 <img
@@ -45,6 +52,6 @@ const focal =
     height={image.height ?? undefined}
     loading={loading}
     decoding="async"
-    style={focal}
+    style={style}
     class={className}
 />

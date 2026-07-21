@@ -42,6 +42,7 @@ export interface ImageValue {
     variants?: ImageVariant[];
     focalX?: number | null;
     focalY?: number | null;
+    fit?: 'cover' | 'contain' | null;
 }
 
 export interface ImageVariant {
