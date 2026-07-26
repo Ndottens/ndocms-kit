@@ -1,7 +1,6 @@
 # ndocms-kit
 
-De gedeelde "loodgieterij" van alle NdoCMS-klantsites. Een klantsite bevat
-alleen nog **design** (tokens, fonts, `site.ts`, slice-componenten + registry,
+Een klantsite bevat alleen nog **design** (tokens, fonts, `site.ts`, slice-componenten + registry,
 fixtures); al het onderliggende komt uit deze kit:
 
 | Import | Wat |
