@@ -1,47 +1,40 @@
 ---
 import SectionDivider from './SectionDivider.astro';
-import type { DividerStyle } from '../lib/design';
+import { chromeIsDark, isChrome, splitChrome, type DividerStyle, type SectionPlan, type Surface } from '../lib/design';
 import type { SliceInstance } from '../lib/types';
 
 // Renders a document's slice zone: maps each slice to the site's component
 // (via the injected registry), alternates light/muted surfaces, places
 // dividers between differing surfaces and sets the anchor targets for
-// section links. The registry and dividerStyle are per-site design; the
-// mechanics here are shared.
+// section links. The registry, dividerStyle and sections are per-site design;
+// the mechanics here are shared and name no slice type.
 
 interface Props {
     slices: SliceInstance[];
     registry: Record<string, any>;
     dividerStyle: DividerStyle;
+    /** Per-project: which sections are chrome, and which have a fixed surface. */
+    sections?: SectionPlan;
 }
 
-const { slices, registry, dividerStyle } = Astro.props;
+const { slices, registry, dividerStyle, sections } = Astro.props;
 
-type Surface = 'light' | 'muted' | 'dark';
-
-// Which slices have a fixed dark background, and which alternate light/muted?
-// This is a superset map: entries for slice types a site doesn't register are
-// simply never reached.
-function isDark(slice: SliceInstance): boolean {
-    const t = slice.sliceType;
-    const v = slice.variation;
-    if (t === 'navigation' || t === 'hero_section' || t === 'footer') return true;
-    if (t === 'stats_section') return v !== 'with_description';
-    if (t === 'cta_section') return v === 'on_dark_background';
-    if (t === 'header_section') return v === 'with_background_image';
-    return false;
-}
+const chrome = sections?.chrome ?? isChrome;
+const surfaceFor = sections?.surfaceFor ?? chromeIsDark;
 
 // Auto-rhythm: alternate the neutral sections so two identical backgrounds
-// never sit next to each other. Slices keep their own padding.
+// never sit next to each other. A section with a fixed surface sits outside the
+// rhythm and leaves its neighbours' alternation untouched. Slices keep their
+// own padding.
 let toggle: Surface = 'light';
 let flip = false;
 const resolved = slices
     .filter((slice) => registry[slice.sliceType])
     .map((slice) => {
+        const fixed = surfaceFor(slice);
         let surface: Surface;
-        if (isDark(slice)) {
-            surface = 'dark';
+        if (fixed !== null) {
+            surface = fixed;
         } else {
             surface = toggle;
             toggle = toggle === 'light' ? 'muted' : 'light';
@@ -50,8 +43,7 @@ const resolved = slices
         const anchorId = typeof slice.id === 'string' && slice.id !== '' ? slice.id.replace('$', '-') : undefined;
         return { slice, surface, anchorId, Component: registry[slice.sliceType] };
     })
-    // Dividers are precomputed so the nav/main/footer grouping below cannot
-    // change the flip order.
+    // Dividers are computed over the whole list, before the <main> split below.
     .map((r, i, all) => {
         const prev = all[i - 1];
         const divider = i > 0 && prev.surface !== r.surface;
@@ -59,14 +51,17 @@ const resolved = slices
         return { ...r, divider, dividerFrom: prev?.surface, dividerFlip: flip };
     });
 
-// <main> landmark: everything between the navigation and the footer.
-const isNav = (r: (typeof resolved)[number]) => r.slice.sliceType === 'navigation';
-const isFooter = (r: (typeof resolved)[number]) => r.slice.sliceType === 'footer';
-const mainItems = resolved.filter((r) => !isNav(r) && !isFooter(r));
+// Sections render in the order the editor put them in. The <main> landmark
+// spans the block from the first to the last content section, so chrome above
+// or below it stays outside — for the usual "navigation first, footer last"
+// page that is the same output as before. Chrome deliberately placed among the
+// content lands inside <main>; that is valid HTML and reads as navigation or a
+// footer scoped to that content.
+const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome);
 ---
 
 {
-    resolved.filter(isNav).map((r) => (
+    before.map((r) => (
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
             <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
@@ -76,9 +71,9 @@ const mainItems = resolved.filter((r) => !isNav(r) && !isFooter(r));
     ))
 }
 {
-    mainItems.length > 0 && (
+    content.length > 0 && (
         <main>
-            {mainItems.map((r) => (
+            {content.map((r) => (
                 <>
                     {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
                     <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
@@ -90,7 +85,7 @@ const mainItems = resolved.filter((r) => !isNav(r) && !isFooter(r));
     )
 }
 {
-    resolved.filter(isFooter).map((r) => (
+    after.map((r) => (
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
             <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">

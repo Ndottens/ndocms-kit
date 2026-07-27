@@ -23,6 +23,10 @@ export interface SliceInstance {
     variation: string;
     primary: Record<string, unknown>;
     items: Record<string, unknown>[];
+    // Set by the CMS on sections belonging to a singleton custom type
+    // (navigation, footer, and whatever gets added later). Drives the <main>
+    // boundary and the default surface, so no slice names are hardcoded.
+    chrome?: boolean;
 }
 
 // Prismic-achtige structured text (TipTap-nodes) zoals het rich_text-veld die opslaat.
