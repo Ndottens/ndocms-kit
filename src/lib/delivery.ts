@@ -1,17 +1,52 @@
 import type { DeliveryDocument } from './types';
 import sample from './fixture.json';
 
-const API_URL = import.meta.env.NDOCMS_API_URL;
-const SITE_SLUG = import.meta.env.NDOCMS_SITE_SLUG;
-const API_KEY = import.meta.env.NDOCMS_API_KEY;
+let API_URL: string | undefined = import.meta.env.NDOCMS_API_URL;
+let SITE_SLUG: string | undefined = import.meta.env.NDOCMS_SITE_SLUG;
+let API_KEY: string | undefined = import.meta.env.NDOCMS_API_KEY;
 // Optional: base URL of the release snapshots on the CDN (R2), e.g.
 // https://pub-….r2.dev/delivery/<slug>. When set, builds read the published
 // content straight from the CDN — the shared-hosting Delivery API (and its
 // Imunify360 bot protection) stays out of the build path entirely. The API
 // remains the fallback when the snapshot is unreachable.
-const SNAPSHOT_URL = import.meta.env.NDOCMS_SNAPSHOT_URL;
+let SNAPSHOT_URL: string | undefined = import.meta.env.NDOCMS_SNAPSHOT_URL;
 
-const configured = Boolean(API_URL && SITE_SLUG && API_KEY);
+let configured = Boolean(API_URL && SITE_SLUG && API_KEY);
+
+/**
+ * On-demand routes on Cloudflare Pages get an EMPTY import.meta.env: the site's
+ * variables live on Astro.locals.runtime.env instead. Everything above is read
+ * at module load and would therefore be undefined there, leaving the delivery
+ * helpers in fixture mode — which is why a slice that loads documents shows an
+ * empty list in the story editor while the static build is fine.
+ *
+ * Call this with Astro.locals from such a route, or from a component rendered
+ * by one, before reading delivery data. It fills in what is missing and is safe
+ * to call repeatedly; outside Cloudflare there is no runtime env and it does
+ * nothing.
+ */
+export function applyRuntimeEnv(locals: unknown): void {
+    const env = (locals as { runtime?: { env?: Record<string, unknown> } } | null)?.runtime?.env;
+    if (!env) {
+        return;
+    }
+
+    const read = (key: string): string | undefined => {
+        const value = env[key];
+        return typeof value === 'string' && value !== '' ? value : undefined;
+    };
+
+    API_URL ??= read('NDOCMS_API_URL');
+    SITE_SLUG ??= read('NDOCMS_SITE_SLUG');
+    API_KEY ??= read('NDOCMS_API_KEY');
+    configured = Boolean(API_URL && SITE_SLUG && API_KEY);
+
+    const snapshot = read('NDOCMS_SNAPSHOT_URL');
+    if (snapshot && snapshot !== SNAPSHOT_URL) {
+        SNAPSHOT_URL = snapshot;
+        snapshotDocumentsCache = undefined;
+    }
+}
 
 // One cache-buster per build: r2.dev caches at the edge and must not serve a
 // previous release to this build.
