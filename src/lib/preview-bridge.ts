@@ -82,6 +82,12 @@ function serializeInline(el: Element, inherited: RichNode['marks'] = []): RichNo
             continue;
         }
         if (!(child instanceof Element)) continue;
+        if (child.tagName === 'BR') {
+            // A trailing <br> is the browser's filler for placing the caret on
+            // the last line; it has no visual effect, so it is not content.
+            if (child !== el.lastChild) out.push({ type: 'hardBreak' });
+            continue;
+        }
         let marks = inherited ?? [];
         const markType = INLINE_MARK_TAGS[child.tagName];
         if (markType) {
@@ -96,7 +102,7 @@ function serializeInline(el: Element, inherited: RichNode['marks'] = []): RichNo
     const merged: RichNode[] = [];
     for (const node of out) {
         const prev = merged[merged.length - 1];
-        if (prev && JSON.stringify(prev.marks ?? []) === JSON.stringify(node.marks ?? [])) {
+        if (prev && prev.type === 'text' && node.type === 'text' && JSON.stringify(prev.marks ?? []) === JSON.stringify(node.marks ?? [])) {
             prev.text = (prev.text ?? '') + (node.text ?? '');
         } else {
             merged.push(node);
@@ -744,10 +750,25 @@ export function initPreviewBridge(): void {
             positionToolbar();
         };
         const onKeydown = (event: KeyboardEvent) => {
-            if (event.key === 'Enter' || event.key === 'Escape') {
+            if (event.key === 'Escape') {
                 event.preventDefault();
                 event.stopPropagation();
                 el.blur();
+                return;
+            }
+            if (event.key === 'Enter') {
+                // A new paragraph would add a block to the field's value, and
+                // this session owns one block's content array. So Enter breaks
+                // the line inside the block instead of ending the session —
+                // letting the browser split the block would produce markup the
+                // serializer cannot read back.
+                event.preventDefault();
+                event.stopPropagation();
+                if (!document.execCommand('insertLineBreak')) {
+                    document.execCommand('insertHTML', false, '<br>');
+                }
+                push();
+                positionToolbar();
             }
         };
         const onBlur = () => {

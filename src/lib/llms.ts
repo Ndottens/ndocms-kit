@@ -31,7 +31,7 @@ export async function buildLlmsTxt(site: SiteConfig, origin: string | undefined)
     const abs = (path: string) => new URL(path, base).href;
 
     const pages = (await getAllDocuments('landing_page')).filter((document) => !isHidden(document));
-    const posts = (await getAllDocuments('blog_post')).filter((document) => !isHidden(document));
+    const posts = (await getAllDocuments('blog_page')).filter((document) => !isHidden(document));
 
     const sections = [
         `# ${site.name}`,
