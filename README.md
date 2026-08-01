@@ -14,7 +14,7 @@ fixtures); al het onderliggende komt uit deze kit:
 | `ndocms-kit/lib/site-config` | `SiteConfig`/`BusinessInfo` (contract voor `src/site.ts`) |
 | `ndocms-kit/lib/design` | `DividerStyle` (contract voor `src/design.ts`) |
 | `ndocms-kit/components/SliceZone.astro` | Slice-rendering: ritme, dividers, ankers — props `{ slices, registry, dividerStyle }` |
-| `ndocms-kit/components/Img.astro` | Beeld met CLS-attributen |
+| `ndocms-kit/components/Img.astro` | Beeld met CLS-attributen, focuspunt, fit en beeldvorm |
 | `ndocms-kit/components/RichText.astro` | Structured-text rendering |
 | `ndocms-kit/components/Icon.astro` | Icon-catalogus (site mag lokaal shadowen) |
 | `ndocms-kit/components/SectionDivider.astro` | Sectie-overgangen (gebruikt door SliceZone) |
@@ -31,6 +31,23 @@ fixtures); al het onderliggende komt uit deze kit:
 /* globale CSS — Tailwind v4 scant node_modules niet vanzelf */
 @source "../../node_modules/ndocms-kit";
 ```
+
+## Beelden: wat de editor per plek bepaalt
+
+`Img.astro` leest drie dingen uit de `ImageValue` en de site hoeft er niks voor
+te doen behalve het beeld via `Img` renderen:
+
+- **Focuspunt** (`focalX`/`focalY`) → `object-position`, zodat een crop het
+  belangrijkste deel in beeld houdt.
+- **Fit** (`fit: 'contain'`) → volledig beeld, niet gecropt.
+- **Vorm** (`shape`: `original`/`square`/`portrait`/`landscape`/`wide`/`circle`)
+  → `aspect-ratio` (+ ronde hoeken bij `circle`), met de gereserveerde hoogte
+  uit die verhouding zodat de vorm geen layout-shift kost.
+
+De vorm werkt alleen als het beeld zich vrij mag opmeten. Zet géén vaste hoogte
+of eigen `aspect-*`-class op de directe container van een `Img` die de keuze van
+de editor moet volgen. Moet een plek altijd dezelfde vorm houden, beperk dat dan
+in de veldconfig (`shapes`) in plaats van in de CSS.
 
 ## Updates & versies
 

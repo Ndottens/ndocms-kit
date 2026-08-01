@@ -47,7 +47,13 @@ export interface ImageValue {
     focalX?: number | null;
     focalY?: number | null;
     fit?: 'cover' | 'contain' | null;
+    shape?: ImageShape | null;
 }
+
+// The shape the editor picked for this placement. 'original' (or no value)
+// keeps the uploaded ratio; the rest force an aspect ratio, 'circle' also
+// rounds the image off completely.
+export type ImageShape = 'original' | 'square' | 'portrait' | 'landscape' | 'wide' | 'circle';
 
 export interface ImageVariant {
     url: string;

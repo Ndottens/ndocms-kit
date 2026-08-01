@@ -12,7 +12,15 @@
 // the image in view. A per-placement fit of 'contain' shows the full image
 // uncropped; the inline style deliberately overrides the slice's object-cover
 // class.
-import type { ImageValue } from '../lib/types';
+//
+// A shape forces an aspect ratio (and rounds it off, for 'circle'), so the
+// editor decides per placement whether an image lands as a rectangle, a square
+// or a circle. The reserved height follows the shape instead of the uploaded
+// dimensions, otherwise the page would still shift. A shape only takes effect
+// when the image is free to size itself: a slice that puts a fixed height or
+// its own aspect-* class on the container wins, so don't do that on containers
+// that should follow the editor's choice.
+import type { ImageShape, ImageValue } from '../lib/types';
 
 interface Props {
     image: ImageValue;
@@ -20,6 +28,14 @@ interface Props {
     loading?: 'lazy' | 'eager';
     sizes?: string;
 }
+
+const SHAPE_RATIOS: Record<Exclude<ImageShape, 'original'>, [number, number]> = {
+    square: [1, 1],
+    portrait: [3, 4],
+    landscape: [4, 3],
+    wide: [16, 9],
+    circle: [1, 1],
+};
 
 const { image, class: className, loading = 'lazy', sizes } = Astro.props;
 
@@ -33,12 +49,35 @@ const srcset = variants.length
           .join(', ')
     : undefined;
 
+const ratio =
+    image.shape && image.shape !== 'original' ? SHAPE_RATIOS[image.shape] : null;
+
+// With a shape, the reserved box is the shape's box: keep the widest known
+// width and derive the height from the ratio.
+const width = image.width ?? undefined;
+const height = ratio
+    ? width
+        ? Math.round((width / ratio[0]) * ratio[1])
+        : undefined
+    : (image.height ?? undefined);
+
 const styleParts = [];
 if (image.focalX != null && image.focalY != null) {
     styleParts.push(`object-position: ${image.focalX}% ${image.focalY}%`);
 }
 if (image.fit === 'contain') {
     styleParts.push('object-fit: contain');
+}
+if (ratio) {
+    styleParts.push(`aspect-ratio: ${ratio[0]} / ${ratio[1]}`);
+    // Without cover the image would stretch to fill the forced ratio. 'contain'
+    // stays as the editor asked: the full image, letterboxed in the shape.
+    if (image.fit !== 'contain') {
+        styleParts.push('object-fit: cover');
+    }
+    if (image.shape === 'circle') {
+        styleParts.push('border-radius: 9999px');
+    }
 }
 const style = styleParts.length ? styleParts.join('; ') : undefined;
 ---
@@ -48,8 +87,8 @@ const style = styleParts.length ? styleParts.join('; ') : undefined;
     srcset={srcset}
     sizes={srcset ? (sizes ?? '100vw') : undefined}
     alt={image.alt ?? ''}
-    width={image.width ?? undefined}
-    height={image.height ?? undefined}
+    width={width}
+    height={height}
     loading={loading}
     decoding="async"
     style={style}
