@@ -246,7 +246,7 @@ function wire(root: HTMLElement): void {
             button.addEventListener('click', () => {
                 selectedSlot = slot;
                 if (summaryEl) {
-                    summaryEl.textContent = `${service.name} — ${dayLabel(day.date, locale)}, ${slot.start}–${slot.end}`;
+                    summaryEl.textContent = `${service.name}, ${dayLabel(day.date, locale)}, ${slot.start} - ${slot.end}`;
                 }
                 show('details');
             });
