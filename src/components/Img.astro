@@ -1,32 +1,38 @@
 ---
-// Standard image render. Always emits width/height so the browser reserves space
-// and the page doesn't shift while loading (good CLS). Above-the-fold images
-// (hero) should pass loading="eager"; everything else stays lazy.
+// Renders a CMS image. One rule runs through everything here: a box has exactly
+// one owner, and the slice says who that is.
 //
-// When the CMS published responsive variants, they become a srcset so the
-// browser downloads the smallest sharp version. Pass `sizes` when the image
-// renders narrower than the viewport (e.g. "(min-width: 1024px) 50vw, 100vw").
+//   box="cms"   the editor decides. Only for fields whose config allows shapes.
+//               This component emits the box; your `class` lands on it.
+//   box="fill"  the slice decides. Wrap the image in your own sized container
+//               (`aspect-[3/4]`, `h-44`, `h-10 w-10`) and pass the usual
+//               `absolute inset-0 h-full w-full object-cover`. Any shape still
+//               sitting on the value is ignored, and reported while developing.
 //
-// A focal point (library default, or a per-placement override on the field)
-// becomes object-position, so object-cover crops keep the important part of
-// the image in view. A per-placement fit of 'contain' shows the full image
-// uncropped; the inline style deliberately overrides the slice's object-cover
-// class.
+// Getting this wrong used to be silent and ugly. A slice would size its own
+// container while the editor's shape was still applied to the <img> inside it.
+// The container won the aspect ratio but not the border-radius, so a circle on a
+// 4/3 box rendered as an ellipse. That is no longer constructible: when the CMS
+// owns the box, this component renders the box.
 //
-// A shape forces an aspect ratio (and rounds it off, for 'circle'), so the
-// editor decides per placement whether an image lands as a rectangle, a square
-// or a circle. The reserved height follows the shape instead of the uploaded
-// dimensions, otherwise the page would still shift. A shape only takes effect
-// when the image is free to size itself: a slice that puts a fixed height or
-// its own aspect-* class on the container wins, so don't do that on containers
-// that should follow the editor's choice.
+// About fit: 'contain' means "no crop". It does NOT letterbox the photo inside a
+// forced shape — empty bands inside a bordered box read as a thick frame, and a
+// contained photo behind a circular mask reads as an oval sliver. No crop means
+// the box follows the photo, which is what an editor means by it. It also
+// matches the editor UI, which disables the focal point under 'contain' because
+// there is nothing left to aim.
 import type { ImageShape, ImageValue } from '../lib/types';
 
 interface Props {
     image: ImageValue;
+    // Who owns the box. No default: picking one is a real decision, and a wrong
+    // guess is exactly the bug this component exists to prevent.
+    box: 'cms' | 'fill';
     class?: string;
     loading?: 'lazy' | 'eager';
     sizes?: string;
+    // Only used to point the dev warning at the right field.
+    field?: string;
 }
 
 const SHAPE_RATIOS: Record<Exclude<ImageShape, 'original'>, [number, number]> = {
@@ -37,7 +43,7 @@ const SHAPE_RATIOS: Record<Exclude<ImageShape, 'original'>, [number, number]> = 
     circle: [1, 1],
 };
 
-const { image, class: className, loading = 'lazy', sizes } = Astro.props;
+const { image, box, class: className, loading = 'lazy', sizes, field } = Astro.props;
 
 const variants = image.variants ?? [];
 const srcset = variants.length
@@ -49,11 +55,24 @@ const srcset = variants.length
           .join(', ')
     : undefined;
 
-const ratio =
-    image.shape && image.shape !== 'original' ? SHAPE_RATIOS[image.shape] : null;
+const cmsShape = image.shape && image.shape !== 'original' ? image.shape : null;
 
-// With a shape, the reserved box is the shape's box: keep the widest known
-// width and derive the height from the ratio.
+// 'contain' means no crop, so a shape would contradict it. The editor greys the
+// picker out under 'contain', but older content can still carry both.
+const shape = box === 'cms' && image.fit !== 'contain' ? cmsShape : null;
+const ratio = shape ? SHAPE_RATIOS[shape] : null;
+
+// A shape the slice will never honour means the field config and the design
+// disagree. Say so while building, instead of letting it surface on the site as
+// a crop nobody asked for.
+if (import.meta.env.DEV && cmsShape && box !== 'cms') {
+    console.warn(
+        `[ndocms-kit] Img: image${field ? ` "${field}"` : ''} carries shape "${cmsShape}" from the CMS, but this placement uses box="fill" and ignores it. Either render it with box="cms", or set shapes: [] on the field so editors are not offered a control that does nothing.`,
+    );
+}
+
+// Always emit width/height so the browser reserves the exact box and the page
+// doesn't shift while loading. With a shape the reserved box is the shape's box.
 const width = image.width ?? undefined;
 const height = ratio
     ? width
@@ -61,36 +80,46 @@ const height = ratio
         : undefined
     : (image.height ?? undefined);
 
-const styleParts = [];
-if (image.focalX != null && image.focalY != null) {
-    styleParts.push(`object-position: ${image.focalX}% ${image.focalY}%`);
-}
-if (image.fit === 'contain') {
-    styleParts.push('object-fit: contain');
-}
-if (ratio) {
-    styleParts.push(`aspect-ratio: ${ratio[0]} / ${ratio[1]}`);
-    // Without cover the image would stretch to fill the forced ratio. 'contain'
-    // stays as the editor asked: the full image, letterboxed in the shape.
-    if (image.fit !== 'contain') {
-        styleParts.push('object-fit: cover');
-    }
-    if (image.shape === 'circle') {
-        styleParts.push('border-radius: 9999px');
-    }
-}
-const style = styleParts.length ? styleParts.join('; ') : undefined;
+const focal =
+    image.focalX != null && image.focalY != null
+        ? `object-position: ${image.focalX}% ${image.focalY}%`
+        : null;
+
+// Only a shape needs a wrapper to clip against. Without one the <img> is the box
+// and carries the class itself, so the markup stays as flat as it was.
+const isCircle = shape === 'circle';
 ---
 
-<img
-    src={image.url}
-    srcset={srcset}
-    sizes={srcset ? (sizes ?? '100vw') : undefined}
-    alt={image.alt ?? ''}
-    width={width}
-    height={height}
-    loading={loading}
-    decoding="async"
-    style={style}
-    class={className}
-/>
+{
+    ratio ? (
+        <div
+            class={className}
+            style={`aspect-ratio: ${ratio[0]} / ${ratio[1]}; overflow: hidden${isCircle ? '; border-radius: 9999px' : ''}`}
+        >
+            <img
+                src={image.url}
+                srcset={srcset}
+                sizes={srcset ? (sizes ?? '100vw') : undefined}
+                alt={image.alt ?? ''}
+                width={width}
+                height={height}
+                loading={loading}
+                decoding="async"
+                style={`height: 100%; width: 100%; object-fit: cover${focal ? `; ${focal}` : ''}`}
+            />
+        </div>
+    ) : (
+        <img
+            src={image.url}
+            srcset={srcset}
+            sizes={srcset ? (sizes ?? '100vw') : undefined}
+            alt={image.alt ?? ''}
+            width={width}
+            height={height}
+            loading={loading}
+            decoding="async"
+            style={focal ?? undefined}
+            class={className}
+        />
+    )
+}

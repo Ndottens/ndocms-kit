@@ -46,13 +46,19 @@ export interface ImageValue {
     variants?: ImageVariant[];
     focalX?: number | null;
     focalY?: number | null;
+    // Whether the editor wants a crop. 'cover' (the default) crops to the shape
+    // and the focal point decides what stays in view. 'contain' means no crop at
+    // all: the box follows the photo and the shape is dropped. It is not an
+    // object-fit value — letterboxing inside a forced shape is never what an
+    // editor means by "fit".
     fit?: 'cover' | 'contain' | null;
     shape?: ImageShape | null;
 }
 
 // The shape the editor picked for this placement. 'original' (or no value)
-// keeps the uploaded ratio; the rest force an aspect ratio, 'circle' also
-// rounds the image off completely.
+// keeps the uploaded ratio; the rest crop to a fixed ratio, 'circle' also rounds
+// the box off completely. Only honoured where the slice renders the image with
+// box="cms" — see Img.astro.
 export type ImageShape = 'original' | 'square' | 'portrait' | 'landscape' | 'wide' | 'circle';
 
 export interface ImageVariant {
