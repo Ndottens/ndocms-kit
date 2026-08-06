@@ -34,20 +34,44 @@ fixtures); al het onderliggende komt uit deze kit:
 
 ## Beelden: wat de editor per plek bepaalt
 
-`Img.astro` leest drie dingen uit de `ImageValue` en de site hoeft er niks voor
-te doen behalve het beeld via `Img` renderen:
+Elke `<Img>` heeft een **verplichte `box`-prop**. Die zegt wie de verhouding van
+het beeld bepaalt, en dat is altijd precies één partij:
 
-- **Focuspunt** (`focalX`/`focalY`) → `object-position`, zodat een crop het
-  belangrijkste deel in beeld houdt.
-- **Fit** (`fit: 'contain'`) → volledig beeld, niet gecropt.
+| `box` | Wie bepaalt de vorm | Waarvoor |
+|---|---|---|
+| `"cms"` | de redacteur | vrije, redactionele beelden — alleen waar het veld `shapes` toestaat |
+| `"fill"` | de slice | logo's, avatars, tegels, fotogrids, achtergronden |
+
+Bij `box="cms"` rendert `Img` **zelf** de box: `aspect-ratio`, `overflow-hidden`,
+en bij `circle` de radius — op een vlak dat gegarandeerd vierkant is. Je `class`
+landt op die box, dus zet er geen eigen `aspect-*` of vaste hoogte omheen.
+
+Bij `box="fill"` zet de slice de box en krijgt het beeld
+`absolute inset-0 h-full w-full object-cover`. Een `shape` op de waarde wordt dan
+bewust genegeerd, en `Img` logt daar in dev een waarschuwing over (geef
+`field="slice.veldnaam"` mee zodat die bruikbaar is). Die waarschuwing betekent
+dat het CMS een knop toont die het design niet uitvoert: repareer de veldconfig
+of de slice, negeer hem niet.
+
+Waarom het verplicht is: een slice die zijn eigen ratio zette terwijl de vorm nog
+op de `<img>` stond, won de verhouding maar niet de afronding. Een volledige
+radius op een 4:3-vlak is een **ellips**. Met `box` kan dat niet meer ontstaan.
+
+Wat `Img` verder uit de `ImageValue` leest:
+
+- **Focuspunt** (`focalX`/`focalY`) → `object-position`, zodat een uitsnede het
+  belangrijkste deel in beeld houdt. Werkt in beide modi.
+- **Fit** (`fit: 'contain'`) → **geen uitsnede**. Dit is geen object-fit-waarde:
+  de box volgt de foto en een gekozen vorm vervalt. Letterboxen binnen een
+  opgelegde vorm doet `Img` nooit — lege banden in een gekaderde box lezen als een
+  dik kader, en een ingepaste foto achter een cirkelmasker als een ovale sliver.
 - **Vorm** (`shape`: `original`/`square`/`portrait`/`landscape`/`wide`/`circle`)
-  → `aspect-ratio` (+ ronde hoeken bij `circle`), met de gereserveerde hoogte
-  uit die verhouding zodat de vorm geen layout-shift kost.
+  → de aspect-ratio van de box, met de gereserveerde hoogte uit die verhouding
+  zodat de vorm geen layout-shift kost. Alleen bij `box="cms"` en zonder
+  `fit: 'contain'`.
 
-De vorm werkt alleen als het beeld zich vrij mag opmeten. Zet géén vaste hoogte
-of eigen `aspect-*`-class op de directe container van een `Img` die de keuze van
-de editor moet volgen. Moet een plek altijd dezelfde vorm houden, beperk dat dan
-in de veldconfig (`shapes`) in plaats van in de CSS.
+`width`/`height`, `srcset`/`sizes`, `loading` en `decoding` worden in beide modi
+gezet — CLS blijft dus altijd gedekt.
 
 ## Updates & versies
 
