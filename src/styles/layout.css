@@ -1,0 +1,67 @@
+/*
+ * Layout primitives for breakouts and full-bleed sections. Plain CSS on
+ * purpose: nothing here depends on Tailwind scanning, so these classes can
+ * never be purged away.
+ *
+ * The grid replaces the classic `mx-auto max-w-7xl px-*` container where a
+ * slice needs children that escape it. Defaults match that container; projects
+ * tune them via --nk-content-max / --nk-content-gutter on :root.
+ *
+ *   <section class="nk-grid">
+ *     <div>…in the content column (default)…</div>
+ *     <div class="nk-full">…edge to edge…</div>
+ *     <div class="nk-breakout-right">…content edge to viewport edge…</div>
+ *     <div class="nk-inset">…full bleed with a small inset margin…</div>
+ *   </section>
+ */
+
+.nk-grid {
+    --nk-max: var(--nk-content-max, 80rem);
+    --nk-gutter: var(--nk-content-gutter, 1.25rem);
+    display: grid;
+    grid-template-columns:
+        [full-start] minmax(var(--nk-gutter), 1fr)
+        [content-start] min(var(--nk-max), calc(100% - 2 * var(--nk-gutter)))
+        [content-end] minmax(var(--nk-gutter), 1fr)
+        [full-end];
+}
+
+@media (min-width: 768px) {
+    .nk-grid {
+        --nk-gutter: var(--nk-content-gutter-md, 2.5rem);
+    }
+}
+
+@media (min-width: 1024px) {
+    .nk-grid {
+        --nk-gutter: var(--nk-content-gutter-lg, 4rem);
+    }
+}
+
+.nk-grid > * {
+    grid-column: content;
+}
+
+.nk-full {
+    grid-column: full;
+}
+
+.nk-breakout-right {
+    grid-column: content-start / full-end;
+}
+
+.nk-breakout-left {
+    grid-column: full-start / content-end;
+}
+
+/* Full bleed with a small breathing margin (inset hero, framed band). */
+.nk-inset {
+    grid-column: full;
+    margin-inline: clamp(0.75rem, 3vw, 2.5rem);
+}
+
+/* Slider progressive enhancement: without JS the track is a native swipeable
+ * scroll-snap row; the controls only appear once <nk-slider> is defined. */
+nk-slider:not(:defined) [data-nk-slider-controls] {
+    display: none;
+}

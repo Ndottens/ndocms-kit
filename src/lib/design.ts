@@ -8,9 +8,23 @@ import type { SliceInstance } from './types';
 // Shape of the transition between two sections with different backgrounds.
 // Each site picks its own value in src/design.ts (see the project's DESIGN.md);
 // the SliceZone places the divider automatically.
-export type DividerStyle = 'none' | 'line' | 'angle' | 'curve' | 'wave';
+export type DividerStyle = 'none' | 'line' | 'angle' | 'curve' | 'wave' | 'wave-organic';
 
-export type Surface = 'light' | 'muted' | 'dark';
+// A one-off divider shape for a single transition, returned by
+// SectionPlan.dividerFor. The path is drawn in the given viewBox and filled
+// with the color of the section below. heightClass must be a literal Tailwind
+// class in the project's design.ts (the project is scanned, so it survives
+// purge); it defaults to the standard divider height.
+export interface CustomDivider {
+    path: string;
+    viewBox?: string;
+    heightClass?: string;
+}
+
+// 'brand' (the project's brand color as a section background) never joins the
+// automatic light/muted rhythm; it is only reachable through surfaceFor. It
+// requires the --color-surface-brand and --color-ink-brand tokens.
+export type Surface = 'light' | 'muted' | 'dark' | 'brand';
 
 /**
  * Which sections belong to the site as a whole (navigation, footer, and
@@ -28,6 +42,12 @@ export type SurfaceResolver = (slice: SliceInstance) => Surface | null;
 export interface SectionPlan {
     chrome?: ChromePredicate;
     surfaceFor?: SurfaceResolver;
+    /**
+     * Per-transition divider override: return a DividerStyle or a CustomDivider
+     * for the transition INTO `next`, or null to fall back to the site-wide
+     * dividerStyle. Lets one transition be organic while the rest stay quiet.
+     */
+    dividerFor?: (from: Surface, to: Surface, next: SliceInstance) => DividerStyle | CustomDivider | null;
 }
 
 /**

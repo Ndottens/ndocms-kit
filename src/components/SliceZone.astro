@@ -1,6 +1,14 @@
 ---
 import SectionDivider from './SectionDivider.astro';
-import { chromeIsDark, isChrome, splitChrome, type DividerStyle, type SectionPlan, type Surface } from '../lib/design';
+import {
+    chromeIsDark,
+    isChrome,
+    splitChrome,
+    type CustomDivider,
+    type DividerStyle,
+    type SectionPlan,
+    type Surface,
+} from '../lib/design';
 import type { SliceInstance } from '../lib/types';
 
 // Renders a document's slice zone: maps each slice to the site's component
@@ -44,11 +52,21 @@ const resolved = slices
         return { slice, surface, anchorId, Component: registry[slice.sliceType] };
     })
     // Dividers are computed over the whole list, before the <main> split below.
+    // Each wrapper also gets a descending z-index: an earlier section always
+    // paints over the background of the next one, so a slice can let an image
+    // or card hang over the section boundary (see projects/PATTERNS.md). With
+    // no overhang this is invisible. Side effect by design: every wrapper is a
+    // stacking context, so a slice's internal z-indexes stay inside it.
     .map((r, i, all) => {
         const prev = all[i - 1];
         const divider = i > 0 && prev.surface !== r.surface;
         if (divider) flip = !flip;
-        return { ...r, divider, dividerFrom: prev?.surface, dividerFlip: flip };
+        // Per-transition override: the project can make one transition organic
+        // (or quiet) while the site-wide dividerStyle covers the rest.
+        const dividerShape: DividerStyle | CustomDivider = divider
+            ? (sections?.dividerFor?.(prev.surface, r.surface, r.slice) ?? dividerStyle)
+            : dividerStyle;
+        return { ...r, divider, dividerFrom: prev?.surface, dividerFlip: flip, dividerShape, z: all.length - i };
     });
 
 // Sections render in the order the editor put them in. The <main> landmark
@@ -63,8 +81,8 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
 {
     before.map((r) => (
         <>
-            {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
-            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
+            {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
+            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
                 <r.Component slice={r.slice} surface={r.surface} />
             </div>
         </>
@@ -75,8 +93,8 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
         <main>
             {content.map((r) => (
                 <>
-                    {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
-                    <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
+                    {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
+                    <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
                         <r.Component slice={r.slice} surface={r.surface} />
                     </div>
                 </>
@@ -87,8 +105,8 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
 {
     after.map((r) => (
         <>
-            {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={dividerStyle} flip={r.dividerFlip} />}
-            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="scroll-mt-20">
+            {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
+            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
                 <r.Component slice={r.slice} surface={r.surface} />
             </div>
         </>

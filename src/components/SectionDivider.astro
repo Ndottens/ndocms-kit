@@ -1,27 +1,59 @@
 ---
-import type { DividerStyle } from '../lib/design';
-
-type Surface = 'light' | 'muted' | 'dark';
+import type { CustomDivider, DividerStyle, Surface } from '../lib/design';
 
 interface Props {
     from: Surface;
     to: Surface;
-    style: DividerStyle;
+    style: DividerStyle | CustomDivider;
     flip?: boolean;
 }
 
 const { from, to, style, flip = false } = Astro.props;
 
-const bg: Record<Surface, string> = { light: 'bg-surface', muted: 'bg-surface-muted', dark: 'bg-surface-inverse' };
-const fill: Record<Surface, string> = { light: 'fill-surface', muted: 'fill-surface-muted', dark: 'fill-surface-inverse' };
+// A CustomDivider (object) renders its own path; a DividerStyle (string) picks
+// one of the named shapes below.
+const custom = typeof style === 'object' ? style : null;
+
+const bg: Record<Surface, string> = {
+    light: 'bg-surface',
+    muted: 'bg-surface-muted',
+    dark: 'bg-surface-inverse',
+    brand: 'bg-surface-brand',
+};
+const fill: Record<Surface, string> = {
+    light: 'fill-surface',
+    muted: 'fill-surface-muted',
+    dark: 'fill-surface-inverse',
+    brand: 'fill-surface-brand',
+};
 
 // De strip heeft de kleur van de bovenliggende sectie (`from`); de SVG-vorm is
 // gevuld met de kleur van de onderliggende sectie (`to`) en komt zo omhoog.
 // `flip` spiegelt de richting, zodat opeenvolgende dividers elkaar afwisselen.
 const svgClass = `block h-10 w-full md:h-16 ${fill[to]}`;
+// 'wave-organic' en custom dividers zijn hoger: asymmetrische vormen hebben
+// ruimte nodig om organisch te lezen.
+const tallSvgClass = `block h-14 w-full md:h-24 ${fill[to]}`;
 const anglePoints = flip ? '0,0 1200,80 0,80' : '0,80 1200,0 1200,80';
 const curvePath = flip ? 'M0,0 C400,80 800,80 1200,0 L1200,80 L0,80 Z' : 'M0,80 C400,0 800,0 1200,80 Z';
+// Twee ongelijke bogen, bewust niet symmetrisch; flip spiegelt horizontaal.
+const organicPath = flip
+    ? 'M1200,52 C1050,10 900,88 660,60 C420,32 200,90 0,44 L0,120 L1200,120 Z'
+    : 'M0,52 C150,10 300,88 540,60 C780,32 1000,90 1200,44 L1200,120 L0,120 Z';
 ---
+
+{custom && (
+    <div class={`${bg[from]} leading-none`}>
+        <svg
+            class={`${custom.heightClass ?? 'block h-10 w-full md:h-16'} w-full ${fill[to]}`}
+            viewBox={custom.viewBox ?? '0 0 1200 80'}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+        >
+            <path d={custom.path} />
+        </svg>
+    </div>
+)}
 
 {style === 'line' && (
     <div class={bg[from]}>
@@ -49,6 +81,14 @@ const curvePath = flip ? 'M0,0 C400,80 800,80 1200,0 L1200,80 L0,80 Z' : 'M0,80 
     <div class={`${bg[from]} leading-none`}>
         <svg class={svgClass} viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true">
             <path d="M0,40 C150,80 350,0 600,40 C850,80 1050,0 1200,40 L1200,80 L0,80 Z" />
+        </svg>
+    </div>
+)}
+
+{style === 'wave-organic' && (
+    <div class={`${bg[from]} leading-none`}>
+        <svg class={tallSvgClass} viewBox="0 0 1200 120" preserveAspectRatio="none" aria-hidden="true">
+            <path d={organicPath} />
         </svg>
     </div>
 )}

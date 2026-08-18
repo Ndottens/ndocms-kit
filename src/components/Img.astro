@@ -29,6 +29,11 @@ interface Props {
     // guess is exactly the bug this component exists to prevent.
     box: 'cms' | 'fill';
     class?: string;
+    // Always lands on the <img> itself, in both modes. In cms mode `class` goes
+    // to the shape wrapper, so this is the only hook on the image element there
+    // (hover-zoom, transitions, masks). It cannot change the box: the wrapper
+    // still owns aspect-ratio and clipping.
+    imgClass?: string;
     loading?: 'lazy' | 'eager';
     sizes?: string;
     // Only used to point the dev warning at the right field.
@@ -43,7 +48,7 @@ const SHAPE_RATIOS: Record<Exclude<ImageShape, 'original'>, [number, number]> = 
     circle: [1, 1],
 };
 
-const { image, box, class: className, loading = 'lazy', sizes, field } = Astro.props;
+const { image, box, class: className, imgClass, loading = 'lazy', sizes, field } = Astro.props;
 
 const variants = image.variants ?? [];
 const srcset = variants.length
@@ -105,7 +110,8 @@ const isCircle = shape === 'circle';
                 height={height}
                 loading={loading}
                 decoding="async"
-                style={`height: 100%; width: 100%; object-fit: cover${focal ? `; ${focal}` : ''}`}
+                class={`h-full w-full object-cover${imgClass ? ` ${imgClass}` : ''}`}
+                style={focal ?? undefined}
             />
         </div>
     ) : (
@@ -119,7 +125,7 @@ const isCircle = shape === 'circle';
             loading={loading}
             decoding="async"
             style={focal ?? undefined}
-            class={className}
+            class={[className, imgClass].filter(Boolean).join(' ') || undefined}
         />
     )
 }
