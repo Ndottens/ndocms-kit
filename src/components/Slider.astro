@@ -34,6 +34,7 @@ const { label, dots = true, arrows = true, class: className, trackClass } = Astr
         tabindex="0"
     >
         <slot />
+        <span data-nk-slider-tail aria-hidden="true" class="block shrink-0" style="width:0"></span>
     </div>
 
     {(dots || arrows) && (
@@ -70,6 +71,7 @@ const { label, dots = true, arrows = true, class: className, trackClass } = Astr
 <script>
     class NkSlider extends HTMLElement {
         private track!: HTMLElement;
+        private tail: HTMLElement | null = null;
         private dotsHost: HTMLElement | null = null;
         private prev: HTMLButtonElement | null = null;
         private next: HTMLButtonElement | null = null;
@@ -80,6 +82,7 @@ const { label, dots = true, arrows = true, class: className, trackClass } = Astr
             const track = this.querySelector<HTMLElement>('[data-nk-slider-track]');
             if (!track) return;
             this.track = track;
+            this.tail = this.querySelector('[data-nk-slider-tail]');
             this.dotsHost = this.querySelector('[data-nk-slider-dots]');
             this.prev = this.querySelector('[data-nk-slider-prev]');
             this.next = this.querySelector('[data-nk-slider-next]');
@@ -101,7 +104,24 @@ const { label, dots = true, arrows = true, class: className, trackClass } = Astr
         }
 
         private items(): HTMLElement[] {
-            return Array.from(this.track.children) as HTMLElement[];
+            return (Array.from(this.track.children) as HTMLElement[]).filter(
+                (child) => child !== this.tail,
+            );
+        }
+
+        /**
+         * A track is rarely a whole number of items wide: show 2.4 cards and the
+         * last reachable scroll position is that 0.4, which leaves the leftmost
+         * card sliced in half. This filler adds the missing fraction after the
+         * last item, so every stop — the final one included — starts an item
+         * flush against the left edge.
+         */
+        private syncTail(): void {
+            if (!this.tail) return;
+            const stride = this.itemStride();
+            if (stride <= 0) return;
+            const rest = this.track.clientWidth % stride;
+            this.tail.style.width = rest > 1 ? `${Math.round(stride - rest)}px` : '0px';
         }
 
         private itemStride(): number {
@@ -134,6 +154,7 @@ const { label, dots = true, arrows = true, class: className, trackClass } = Astr
         }
 
         private sync() {
+            this.syncTail();
             const pages = this.pageCount();
             const page = Math.min(this.page(), pages - 1);
 

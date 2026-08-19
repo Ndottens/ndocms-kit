@@ -859,7 +859,15 @@ export function initPreviewBridge(): void {
             if (src) {
                 const absolute = new URL(src, window.location.href).href;
                 if (shellSrcs.has(absolute.split('?')[0])) continue;
-                clone.src = `${absolute}${absolute.includes('?') ? '&' : '?'}ndocmsRun=${scriptRunCounter}`;
+                // The buster goes in FRONT of the existing query, never behind
+                // it. In `astro dev` a component script is served from a URL
+                // that has to END in `&lang.ts` for Vite to compile it; append
+                // anything after that and the browser gets raw TypeScript
+                // ("Unexpected identifier"), so the slice stays dead in the
+                // editor preview while it works fine on the built site.
+                clone.src = absolute.includes('?')
+                    ? absolute.replace('?', `?ndocmsRun=${scriptRunCounter}&`)
+                    : `${absolute}?ndocmsRun=${scriptRunCounter}`;
             } else {
                 if (!script.textContent || shellInline.has(script.textContent)) continue;
                 clone.textContent = script.textContent;
