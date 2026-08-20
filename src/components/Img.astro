@@ -35,6 +35,12 @@ interface Props {
     // still owns aspect-ratio and clipping.
     imgClass?: string;
     loading?: 'lazy' | 'eager';
+    // Defaults to 'high' for an eager image, because in this codebase eager
+    // means "this is the opening image of the page" — which is the LCP element
+    // more often than not. Without it the browser starts that request at Low
+    // priority and only promotes it after layout, which cost seconds on mobile.
+    // Pass 'auto' for an eager image that is decidedly not the LCP candidate.
+    fetchpriority?: 'high' | 'low' | 'auto';
     sizes?: string;
     // Only used to point the dev warning at the right field.
     field?: string;
@@ -48,17 +54,26 @@ const SHAPE_RATIOS: Record<Exclude<ImageShape, 'original'>, [number, number]> = 
     circle: [1, 1],
 };
 
-const { image, box, class: className, imgClass, loading = 'lazy', sizes, field } = Astro.props;
+const { image, box, class: className, imgClass, loading = 'lazy', fetchpriority, sizes, field } = Astro.props;
 
 const variants = image.variants ?? [];
+const widestVariant = variants.length ? variants[variants.length - 1].width : 0;
+
+// The upload itself is only a candidate when no conversion reaches its size —
+// media from before conversions existed. Offering it alongside conversions that
+// already cover the original width makes it the widest entry in the list, and a
+// phone at DPR 2 then downloads the untouched PNG instead of the webp next to
+// it. That is not a fallback, it is the default, which is the wrong way around.
 const srcset = variants.length
     ? [
           ...variants.map((variant) => `${variant.url} ${variant.width}w`),
-          image.width ? `${image.url} ${image.width}w` : null,
+          image.width && image.width > widestVariant ? `${image.url} ${image.width}w` : null,
       ]
           .filter(Boolean)
           .join(', ')
     : undefined;
+
+const priority = fetchpriority ?? (loading === 'eager' ? 'high' : undefined);
 
 const cmsShape = image.shape && image.shape !== 'original' ? image.shape : null;
 
@@ -109,6 +124,7 @@ const isCircle = shape === 'circle';
                 width={width}
                 height={height}
                 loading={loading}
+                fetchpriority={priority}
                 decoding="async"
                 class={`h-full w-full object-cover${imgClass ? ` ${imgClass}` : ''}`}
                 style={focal ?? undefined}
@@ -123,6 +139,7 @@ const isCircle = shape === 'circle';
             width={width}
             height={height}
             loading={loading}
+            fetchpriority={priority}
             decoding="async"
             style={focal ?? undefined}
             class={[className, imgClass].filter(Boolean).join(' ') || undefined}
