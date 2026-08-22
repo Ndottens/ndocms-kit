@@ -21,6 +21,11 @@ export function defineSite({ site, base, integrations = [] }: DefineSiteOptions)
         site,
         output: 'static',
         adapter: cloudflare(),
+        // These sites have no server-side session: every page is prerendered and
+        // the one on-demand route renders a posted draft. Leaving sessions on
+        // makes Wrangler provision a KV namespace per site and ships the session
+        // runtime in the worker for nothing.
+        session: false,
         integrations: [
             sitemap({ filter: (page) => !page.includes('/_ndocms/') }),
             ndocmsBase(base),
