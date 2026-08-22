@@ -1,0 +1,64 @@
+---
+import SiteLayout from 'virtual:ndocms/layout';
+import SliceZone from 'ndocms-kit/components/SliceZone.astro';
+import PreviewBridge from 'ndocms-kit/components/PreviewBridge.astro';
+import { registry } from 'virtual:ndocms/slices';
+import { dividerStyle, sections } from 'virtual:ndocms/design';
+import { previewRuntimeEnv } from 'ndocms-kit/lib/preview';
+import { validatePreviewToken } from 'ndocms-kit/lib/preview-token';
+import type { SliceInstance } from 'ndocms-kit/lib/types';
+
+// On-demand render route for the NdoCMS story editor (injected by the
+// ndocmsPreview() integration, see astro.config.mjs). GET returns an empty
+// shell with the bridge script; POST renders the posted draft document with
+// this site's own slice components and returns the HTML. Never indexed,
+// never part of the static build; visitors never hit this route.
+export const prerender = false;
+
+const MAX_BODY_BYTES = 1_000_000;
+
+// Read via the Cloudflare runtime env (import.meta.env is empty in
+// on-demand routes on Pages; previewRuntimeEnv falls back to it for dev).
+const apiUrl = previewRuntimeEnv(Astro.locals, 'NDOCMS_API_URL');
+const editorOrigin = apiUrl ? new URL(apiUrl).origin : null;
+
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+Astro.response.headers.set('Content-Security-Policy', `frame-ancestors ${editorOrigin ?? "'none'"}`);
+
+let isRender = false;
+let slices: SliceInstance[] = [];
+
+if (Astro.request.method === 'POST') {
+    const tokenValid = await validatePreviewToken(
+        Astro.request.headers.get('x-ndocms-preview-token'),
+        previewRuntimeEnv(Astro.locals, 'NDOCMS_API_KEY'),
+    );
+    if (!tokenValid) {
+        return new Response('Unauthorized', { status: 401 });
+    }
+
+    const contentType = Astro.request.headers.get('content-type') ?? '';
+    if (!contentType.includes('application/json')) {
+        return new Response('Unsupported Media Type', { status: 415 });
+    }
+
+    const raw = await Astro.request.text();
+    if (raw.length > MAX_BODY_BYTES) {
+        return new Response('Payload Too Large', { status: 413 });
+    }
+
+    let body: { data?: { slices?: SliceInstance[] } };
+    try {
+        body = JSON.parse(raw);
+    } catch {
+        return new Response('Bad Request', { status: 400 });
+    }
+
+    isRender = true;
+    slices = body.data?.slices ?? [];
+}
+---
+
+<SiteLayout title="Preview" noindex>
+    {isRender ? <SliceZone slices={slices} registry={registry} dividerStyle={dividerStyle} sections={sections} /> : <PreviewBridge editorOrigin={editorOrigin} />}
+</SiteLayout>

@@ -1,6 +1,6 @@
 {
     "name": "ndocms-kit",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "Shared plumbing for NdoCMS client sites (Astro): delivery/snapshots, forms, booking widget, SEO layout, slice-zone mechanics, layout/shape/slider primitives.",
     "type": "module",
     "license": "UNLICENSED",
@@ -8,9 +8,15 @@
         "./lib/*": "./src/lib/*.ts",
         "./components/*.astro": "./src/components/*.astro",
         "./layouts/*.astro": "./src/layouts/*.astro",
-        "./styles/*.css": "./src/styles/*.css"
+        "./styles/*.css": "./src/styles/*.css",
+        "./routes/*.astro": "./src/routes/*.astro",
+        "./routes/*.ts": "./src/routes/*.ts",
+        "./tsconfig.base.json": "./tsconfig.base.json"
     },
     "peerDependencies": {
-        "astro": "^5.0.0"
+        "astro": "^5.0.0 || ^6.0.0 || ^7.0.0",
+        "@astrojs/cloudflare": "^12.0.0 || ^13.0.0 || ^14.0.0",
+        "@astrojs/sitemap": "^3.0.0",
+        "@tailwindcss/vite": "^4.0.0"
     }
 }
