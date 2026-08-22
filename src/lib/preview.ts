@@ -1,12 +1,12 @@
 import type { AstroIntegration } from 'astro';
 
-// Reads site env for the on-demand render route. On the Cloudflare Workers
-// runtime non-public vars are NOT inlined into the server bundle
-// (import.meta.env is empty there); they live on Astro.locals.runtime.env.
-// import.meta.env remains the fallback for local dev.
-export function previewRuntimeEnv(locals: unknown, key: string): string | undefined {
-    const runtime = (locals as { runtime?: { env?: Record<string, unknown> } } | null)?.runtime;
-    const fromRuntime = runtime?.env?.[key];
+// Reads a site variable for the on-demand render route. Astro 6 removed
+// Astro.locals.runtime.env (touching it throws), and `cloudflare:workers` may
+// only be imported from code that runs exclusively in the worker — which a
+// prerendered page does not. So the route imports it and hands the env in here.
+// import.meta.env stays the fallback for local dev.
+export function previewRuntimeEnv(env: unknown, key: string): string | undefined {
+    const fromRuntime = (env as Record<string, unknown> | null | undefined)?.[key];
     if (typeof fromRuntime === 'string' && fromRuntime !== '') return fromRuntime;
     const fromImportMeta = (import.meta as unknown as { env?: Record<string, unknown> }).env?.[key];
     if (typeof fromImportMeta === 'string' && fromImportMeta !== '') return fromImportMeta;

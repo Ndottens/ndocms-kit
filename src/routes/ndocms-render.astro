@@ -4,6 +4,8 @@ import SliceZone from 'ndocms-kit/components/SliceZone.astro';
 import PreviewBridge from 'ndocms-kit/components/PreviewBridge.astro';
 import { registry } from 'virtual:ndocms/slices';
 import { dividerStyle, sections } from 'virtual:ndocms/design';
+import { env } from 'cloudflare:workers';
+import { applyRuntimeEnv } from 'ndocms-kit/lib/delivery';
 import { previewRuntimeEnv } from 'ndocms-kit/lib/preview';
 import { validatePreviewToken } from 'ndocms-kit/lib/preview-token';
 import type { SliceInstance } from 'ndocms-kit/lib/types';
@@ -17,9 +19,11 @@ export const prerender = false;
 
 const MAX_BODY_BYTES = 1_000_000;
 
-// Read via the Cloudflare runtime env (import.meta.env is empty in
-// on-demand routes on Pages; previewRuntimeEnv falls back to it for dev).
-const apiUrl = previewRuntimeEnv(Astro.locals, 'NDOCMS_API_URL');
+// Read via the worker env: import.meta.env is empty in an on-demand route, and
+// Astro 6 removed Astro.locals.runtime.env. Filling the delivery helpers here
+// covers every slice rendered inside this request too.
+applyRuntimeEnv(env);
+const apiUrl = previewRuntimeEnv(env, 'NDOCMS_API_URL');
 const editorOrigin = apiUrl ? new URL(apiUrl).origin : null;
 
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
@@ -31,7 +35,7 @@ let slices: SliceInstance[] = [];
 if (Astro.request.method === 'POST') {
     const tokenValid = await validatePreviewToken(
         Astro.request.headers.get('x-ndocms-preview-token'),
-        previewRuntimeEnv(Astro.locals, 'NDOCMS_API_KEY'),
+        previewRuntimeEnv(env, 'NDOCMS_API_KEY'),
     );
     if (!tokenValid) {
         return new Response('Unauthorized', { status: 401 });

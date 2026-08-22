@@ -14,19 +14,19 @@ let SNAPSHOT_URL: string | undefined = import.meta.env.NDOCMS_SNAPSHOT_URL;
 let configured = Boolean(API_URL && SITE_SLUG && API_KEY);
 
 /**
- * On-demand routes on the Cloudflare Workers runtime get an EMPTY import.meta.env: the site's
- * variables live on Astro.locals.runtime.env instead. Everything above is read
- * at module load and would therefore be undefined there, leaving the delivery
- * helpers in fixture mode — which is why a slice that loads documents shows an
- * empty list in the story editor while the static build is fine.
+ * On-demand routes get an EMPTY import.meta.env: the site's variables live in
+ * the worker env instead. Everything above is read at module load and would
+ * therefore be undefined there, leaving the delivery helpers in fixture mode —
+ * which is why a slice that loads documents shows an empty list in the story
+ * editor while the static build is fine.
  *
- * Call this with Astro.locals from such a route, or from a component rendered
- * by one, before reading delivery data. It fills in what is missing and is safe
- * to call repeatedly; outside Cloudflare there is no runtime env and it does
- * nothing.
+ * Call this with the worker env (the render route imports it from
+ * `cloudflare:workers` and does so once per request, which is enough for every
+ * slice rendered inside it). Safe to call repeatedly, and a no-op when there is
+ * no runtime env — outside Cloudflare there is nothing to fill in.
  */
-export function applyRuntimeEnv(locals: unknown): void {
-    const env = (locals as { runtime?: { env?: Record<string, unknown> } } | null)?.runtime?.env;
+export function applyRuntimeEnv(runtimeEnv: unknown): void {
+    const env = runtimeEnv as Record<string, unknown> | null | undefined;
     if (!env) {
         return;
     }
