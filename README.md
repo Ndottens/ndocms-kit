@@ -77,7 +77,7 @@ gezet — CLS blijft dus altijd gedekt.
 
 - **Bron** is `packages/ndocms-kit/` in de NDOCMS-repo; deze repo is puur het
   distributiekanaal. Publiceren: `make kit-push` in de NDOCMS-root.
-- Sites pinnen op branch **`v1`**. Cloudflare Pages-build-command is
+- Sites pinnen op branch **`v2`**. Het build-command van Workers Builds is
   `npm update ndocms-kit && npm run build`, dus elke site pakt de laatste v1
   automatisch bij z'n volgende build. Lokaal: `npm update ndocms-kit`.
 - **Breaking change?** Push naar een `v2`-branch en laat sites bewust

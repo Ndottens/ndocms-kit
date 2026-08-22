@@ -1,6 +1,6 @@
 import type { AstroIntegration } from 'astro';
 
-// Reads site env for the on-demand render route. On the Cloudflare Pages
+// Reads site env for the on-demand render route. On the Cloudflare Workers
 // runtime non-public vars are NOT inlined into the server bundle
 // (import.meta.env is empty there); they live on Astro.locals.runtime.env.
 // import.meta.env remains the fallback for local dev.

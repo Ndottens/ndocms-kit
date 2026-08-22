@@ -14,7 +14,7 @@ let SNAPSHOT_URL: string | undefined = import.meta.env.NDOCMS_SNAPSHOT_URL;
 let configured = Boolean(API_URL && SITE_SLUG && API_KEY);
 
 /**
- * On-demand routes on Cloudflare Pages get an EMPTY import.meta.env: the site's
+ * On-demand routes on the Cloudflare Workers runtime get an EMPTY import.meta.env: the site's
  * variables live on Astro.locals.runtime.env instead. Everything above is read
  * at module load and would therefore be undefined there, leaving the delivery
  * helpers in fixture mode — which is why a slice that loads documents shows an
@@ -179,7 +179,7 @@ function fixtureDocuments(): DeliveryDocument[] {
 }
 
 // Fetch Delivery API JSON with retries. Imunify360 on the shared-hosting server
-// intermittently blocks datacenter IPs (like Cloudflare Pages build machines)
+// intermittently blocks datacenter IPs (like Cloudflare's build machines)
 // with an HTTP 200 + an "Access denied by Imunify360 bot-protection" JSON body,
 // which would otherwise kill the whole static build. Retries with a pause absorb
 // that; the final error includes the actual response body so the build log shows
