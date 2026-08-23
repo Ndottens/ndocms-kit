@@ -58,8 +58,15 @@ export function ndocmsBase(options: NdocmsBaseOptions = {}): AstroIntegration {
                 if (routes.landing) {
                     injectRoute({ pattern: '/[...uid]', entrypoint: 'ndocms-kit/routes/landing.astro' });
                 }
+                // On demand, because one deployment answers on both the canonical
+                // domain and the *.workers.dev host, and only the request says
+                // which. See the route itself.
                 if (routes.robots) {
-                    injectRoute({ pattern: '/robots.txt', entrypoint: 'ndocms-kit/routes/robots.txt.ts' });
+                    injectRoute({
+                        pattern: '/robots.txt',
+                        entrypoint: 'ndocms-kit/routes/robots.txt.ts',
+                        prerender: false,
+                    });
                 }
                 if (routes.llms) {
                     injectRoute({ pattern: '/llms.txt', entrypoint: 'ndocms-kit/routes/llms.txt.ts' });
