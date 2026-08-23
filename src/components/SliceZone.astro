@@ -66,7 +66,11 @@ const resolved = slices
         const dividerShape: DividerStyle | CustomDivider = divider
             ? (sections?.dividerFor?.(prev.surface, r.surface, r.slice) ?? dividerStyle)
             : dividerStyle;
-        return { ...r, divider, dividerFrom: prev?.surface, dividerFlip: flip, dividerShape, z: all.length - i };
+        // `first` lets a slice give its image loading="eager": only the topmost
+        // slice can hold the LCP element, and a component cannot see its own
+        // position. Without this every image below a hero-less page top loads
+        // lazily, however far above the fold it sits.
+        return { ...r, divider, dividerFrom: prev?.surface, dividerFlip: flip, dividerShape, z: all.length - i, index: i, first: i === 0 };
     });
 
 // Sections render in the order the editor put them in. The <main> landmark
@@ -83,7 +87,7 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
             <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
-                <r.Component slice={r.slice} surface={r.surface} />
+                <r.Component slice={r.slice} surface={r.surface} index={r.index} first={r.first} />
             </div>
         </>
     ))
@@ -95,7 +99,7 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
                 <>
                     {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
                     <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
-                        <r.Component slice={r.slice} surface={r.surface} />
+                        <r.Component slice={r.slice} surface={r.surface} index={r.index} first={r.first} />
                     </div>
                 </>
             ))}
@@ -107,7 +111,7 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
             <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
-                <r.Component slice={r.slice} surface={r.surface} />
+                <r.Component slice={r.slice} surface={r.surface} index={r.index} first={r.first} />
             </div>
         </>
     ))
