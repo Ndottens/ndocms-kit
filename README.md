@@ -24,7 +24,7 @@ fixtures); al het onderliggende komt uit deze kit:
 
 ```jsonc
 // package.json
-"dependencies": { "ndocms-kit": "github:Ndottens/ndocms-kit#v1" }
+"dependencies": { "ndocms-kit": "github:Ndottens/ndocms-kit#semver:^2.1.0" }
 ```
 
 ```css
@@ -76,10 +76,12 @@ gezet — CLS blijft dus altijd gedekt.
 ## Updates & versies
 
 - **Bron** is `packages/ndocms-kit/` in de NDOCMS-repo; deze repo is puur het
-  distributiekanaal. Publiceren: `make kit-push` in de NDOCMS-root.
-- Sites pinnen op branch **`v2`**. Het build-command van Workers Builds is
-  `npm update ndocms-kit && npm run build`, dus elke site pakt de laatste v1
-  automatisch bij z'n volgende build. Lokaal: `npm update ndocms-kit`.
-- **Breaking change?** Push naar een `v2`-branch en laat sites bewust
-  overstappen. Een site tijdelijk bevriezen = de update-stap uit het
-  Pages-build-command halen.
+  distributiekanaal. Publiceren: `make kit-push` in de NDOCMS-root. Die pusht de
+  major-branch (`v2`), een tag `v<versie>` uit `package.json` en een GitHub
+  release, en weigert een tag die al bestaat — dus elke push hoort bij precies
+  één versienummer.
+- **Sites pinnen op de tag**, niet op de branch: `#semver:^2.1.0` plus een
+  lockfile met de exacte commit. Een nieuwe kit-push verandert dus niets aan een
+  site tot je daar `npm update ndocms-kit` doet en de lockfile commit.
+- **Breaking change?** Nieuwe major én nieuwe branch (version `3.0.0`,
+  `make kit-push KIT_REF=v3`). Wat op `^2` gepind staat blijft bouwen.
