@@ -45,6 +45,24 @@ function hasText(node: RichTextNode): boolean {
     return (node.content ?? []).some(hasText);
 }
 
+// A `<br>` at the very start or end of a block is not a break between two
+// lines — there is no line on one side of it. It is a client reaching for air,
+// and it lands as a whole empty text line on top of the margin the design
+// already set: one leading Shift+Enter opened a 3.25rem gap where the paragraph
+// break beside it opened 1.25rem, and both looked the same in the editor.
+// Breaks in the middle stay; those separate two real lines.
+function trimEdgeBreaks(content: RichTextNode[]): RichTextNode[] {
+    let start = 0;
+    let end = content.length;
+    while (start < end && content[start].type === 'hardBreak') {
+        start++;
+    }
+    while (end > start && content[end - 1].type === 'hardBreak') {
+        end--;
+    }
+    return content.slice(start, end);
+}
+
 function renderNode(node: RichTextNode): string {
     if (node.type === 'text') {
         return renderMarks(escapeHtml(node.text ?? ''), node.marks);
@@ -61,7 +79,7 @@ function renderNode(node: RichTextNode): string {
         return '';
     }
 
-    const inner = (node.content ?? []).map(renderNode).join('');
+    const inner = trimEdgeBreaks(node.content ?? []).map(renderNode).join('');
 
     switch (node.type) {
         case 'paragraph':
