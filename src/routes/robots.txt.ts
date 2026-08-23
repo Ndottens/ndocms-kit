@@ -29,6 +29,6 @@ export const GET: APIRoute = ({ site, url }) => {
     const rules = offCanonicalHost ? 'User-agent: *\nDisallow: /\n' : 'User-agent: *\nAllow: /\n';
 
     return new Response(`${rules}\nSitemap: ${sitemap}\n`, {
-        headers: { 'Content-Type': 'text/plain' },
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
 };
