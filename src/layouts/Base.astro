@@ -41,12 +41,20 @@ const logo = site.logo && Astro.site ? new URL(site.logo, Astro.site).href : und
 const siteShareImage = site.shareImage && Astro.site ? new URL(site.shareImage, Astro.site).href : site.shareImage;
 const shareImage = image ?? siteShareImage;
 
+// Stable identifiers so the nodes below reference each other instead of sitting
+// next to each other as unrelated entities. Anchored on the site root, not the
+// current page, so every page points at the same organization and website.
+const siteHref = Astro.site?.href;
+const organizationId = siteHref ? `${siteHref}#organization` : undefined;
+const websiteId = siteHref ? `${siteHref}#website` : undefined;
+const webPageId = `${canonical}#webpage`;
+
 // Site-level structured data. Becomes a LocalBusiness (or subtype) when `business`
 // is filled in site.ts — otherwise a plain Organization.
 const b = site.business;
 const organization: Record<string, unknown> = {
-    '@context': 'https://schema.org',
     '@type': b?.type ?? 'Organization',
+    ...(organizationId ? { '@id': organizationId } : {}),
     name: site.name,
     ...(Astro.site ? { url: Astro.site.href } : {}),
     ...(logo ? { logo } : {}),
@@ -69,12 +77,38 @@ const organization: Record<string, unknown> = {
     ...(b?.geo ? { geo: { '@type': 'GeoCoordinates', latitude: b.geo.lat, longitude: b.geo.lng } } : {}),
 };
 const website = {
-    '@context': 'https://schema.org',
     '@type': 'WebSite',
+    ...(websiteId ? { '@id': websiteId } : {}),
     name: site.name,
     ...(Astro.site ? { url: Astro.site.href } : {}),
+    ...(organizationId ? { publisher: { '@id': organizationId } } : {}),
 };
-const graph = [organization, website, ...(jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [])];
+
+// The page itself as an entity, so a crawler can tell which of the nodes below
+// describes this URL and which describe the site it belongs to.
+const webPage = {
+    '@type': 'WebPage',
+    '@id': webPageId,
+    url: canonical,
+    name: title,
+    ...(desc ? { description: desc } : {}),
+    ...(websiteId ? { isPartOf: { '@id': websiteId } } : {}),
+    ...(organizationId ? { about: { '@id': organizationId } } : {}),
+    ...(shareImage ? { primaryImageOfPage: shareImage } : {}),
+};
+
+// Page-specific nodes join the same graph, so @context belongs to the graph and
+// not to each member. Callers may still pass it; drop it rather than nest it.
+const pageNodes = (jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : []).map((node) => {
+    if (!node || typeof node !== 'object') return node;
+    const { '@context': _context, ...rest } = node as Record<string, unknown>;
+    return rest;
+});
+
+const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [organization, website, webPage, ...pageNodes],
+};
 ---
 
 <!doctype html>
