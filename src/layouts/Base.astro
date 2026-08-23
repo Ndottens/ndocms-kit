@@ -10,7 +10,15 @@ interface Props {
     title: string;
     description?: string;
     type?: 'website' | 'article';
+    // The meta-robots directive as the CMS stores it ('noindex, follow', …).
+    // Left out, the page is indexable and no robots tag is written.
+    robots?: string;
+    // Shorthand for robots="noindex, nofollow", for pages without an SEO panel
+    // (404, the preview route).
     noindex?: boolean;
+    // false keeps the page out of sitemap.xml. A noindex page is left out
+    // regardless — see below.
+    sitemap?: boolean;
     // Absolute URL of the social share image (og:image); falls back to
     // site.shareImage when the page has none.
     image?: string;
@@ -19,7 +27,12 @@ interface Props {
     jsonLd?: object | object[];
 }
 
-const { site, title, description, type = 'website', noindex = false, image, jsonLd } = Astro.props;
+const { site, title, description, type = 'website', robots, noindex = false, image, sitemap = true, jsonLd } = Astro.props;
+
+const robotsContent = robots?.trim() || (noindex ? 'noindex, nofollow' : undefined);
+// Asking a crawler to list a page that tells it not to index itself is a
+// contradiction Google warns about, so noindex always wins over the checkbox.
+const inSitemap = sitemap && !(robotsContent ?? '').includes('noindex');
 
 const desc = description ?? site.description;
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : Astro.url.pathname;
@@ -72,7 +85,11 @@ const graph = [organization, website, ...(jsonLd ? (Array.isArray(jsonLd) ? json
         <title>{title}</title>
         <meta name="description" content={desc} />
         <link rel="canonical" href={canonical} />
-        {noindex && <meta name="robots" content="noindex, nofollow" />}
+        {robotsContent && <meta name="robots" content={robotsContent} />}
+        {/* Read back from the built HTML by the sitemap integration in the kit:
+            the build knows which pages exist, only the page itself knows whether
+            it wants to be listed. */}
+        {!inSitemap && <meta name="ndocms-sitemap" content="exclude" />}
 
         <meta property="og:type" content={type} />
         <meta property="og:title" content={title} />

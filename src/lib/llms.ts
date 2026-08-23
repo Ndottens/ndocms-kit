@@ -2,6 +2,7 @@
 // AI assistants and LLM crawlers — robots.txt's "who may crawl" counterpart
 // for "what is this site and where is the important content".
 import { getAllDocuments } from './delivery';
+import { pageSeo } from './seo';
 import type { DeliveryDocument } from './types';
 import type { SiteConfig } from './site-config';
 
@@ -9,8 +10,10 @@ function seoOf(document: DeliveryDocument): Record<string, unknown> {
     return (document.data.seo ?? {}) as Record<string, unknown>;
 }
 
+// Same line as the sitemap: what a site does not offer to a search engine it
+// does not offer to an assistant either.
 function isHidden(document: DeliveryDocument): boolean {
-    return seoOf(document).hide_from_search === true;
+    return !pageSeo(document).sitemap;
 }
 
 function titleOf(document: DeliveryDocument): string {

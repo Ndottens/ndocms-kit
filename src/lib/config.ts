@@ -1,8 +1,8 @@
 import { defineConfig } from 'astro/config';
-import sitemap from '@astrojs/sitemap';
 import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
 import { ndocmsBase, type NdocmsBaseOptions } from './integration';
+import { ndocmsSitemap } from './sitemap';
 
 export interface DefineSiteOptions {
     // The public URL of this client site: drives canonical, sitemap and the
@@ -27,7 +27,7 @@ export function defineSite({ site, base, integrations = [] }: DefineSiteOptions)
         // runtime in the worker for nothing.
         session: false,
         integrations: [
-            sitemap({ filter: (page) => !page.includes('/_ndocms/') }),
+            ...ndocmsSitemap(),
             ndocmsBase(base),
             ...integrations,
         ],

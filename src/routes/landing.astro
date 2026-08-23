@@ -4,6 +4,7 @@ import SliceZone from 'ndocms-kit/components/SliceZone.astro';
 import { registry } from 'virtual:ndocms/slices';
 import { dividerStyle, sections } from 'virtual:ndocms/design';
 import { getAllDocuments } from 'ndocms-kit/lib/delivery';
+import { pageSeo } from 'ndocms-kit/lib/seo';
 import type { DeliveryDocument, SliceInstance } from 'ndocms-kit/lib/types';
 
 export async function getStaticPaths() {
@@ -22,14 +23,10 @@ interface Props {
 
 const { document } = Astro.props;
 const slices = (document.data.slices ?? []) as SliceInstance[];
-const seo = (document.data.seo ?? {}) as Record<string, unknown>;
-
-const title = (typeof seo.meta_title === 'string' && seo.meta_title) || document.uid;
-const description = typeof seo.meta_description === 'string' ? seo.meta_description : undefined;
-const shareImage = (seo.share_image as { url?: string } | undefined)?.url;
-const noindex = seo.hide_from_search === true;
+const seo = pageSeo(document);
+const title = seo.title || document.uid;
 ---
 
-<SiteLayout title={title} description={description} image={shareImage} noindex={noindex}>
+<SiteLayout title={title} description={seo.description} image={seo.shareImage} robots={seo.robots} sitemap={seo.sitemap}>
     <SliceZone slices={slices} registry={registry} dividerStyle={dividerStyle} sections={sections} />
 </SiteLayout>
