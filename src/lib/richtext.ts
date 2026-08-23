@@ -1,4 +1,5 @@
 import type { RichTextNode } from './types';
+import { internalHref } from './href';
 
 function escapeHtml(value: string): string {
     return value
@@ -21,7 +22,11 @@ function renderMarks(text: string, marks?: RichTextNode['marks']): string {
             case 'strike':
                 return `<s>${acc}</s>`;
             case 'link': {
-                const href = escapeHtml(String(mark.attrs?.href ?? '#'));
+                // Through internalHref for the same reason as a link in a slice:
+                // Cloudflare answers /contact with a 307 to /contact/. A link
+                // typed into a text field would otherwise be the one place on the
+                // site that still costs a redirect on every click.
+                const href = escapeHtml(internalHref(mark.attrs?.href, '#'));
                 return `<a href="${href}" class="underline">${acc}</a>`;
             }
             default:
