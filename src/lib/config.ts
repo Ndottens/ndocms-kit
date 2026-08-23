@@ -3,6 +3,7 @@ import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
 import { ndocmsBase, type NdocmsBaseOptions } from './integration';
 import { ndocmsSitemap } from './sitemap';
+import { ndocmsHeadingCheck } from './headings';
 
 export interface DefineSiteOptions {
     // The public URL of this client site: drives canonical, sitemap and the
@@ -29,12 +30,17 @@ export function defineSite({ site, base, integrations = [] }: DefineSiteOptions)
         integrations: [
             ...ndocmsSitemap(),
             ndocmsBase(base),
+            ndocmsHeadingCheck(),
             ...integrations,
         ],
-        // One ~10 kB stylesheet is otherwise a render-blocking request on the
-        // critical path (~160 ms on slow 4G), which weighs heavier on these
-        // sites than sharing the cache between pages.
-        build: { inlineStylesheets: 'always' },
+        // 'always' was chosen when the stylesheet was ~10 kB. Measured on a built
+        // site it is 58 kB, byte-identical on every page and ~70% of the HTML,
+        // and inline CSS has no URL so it can never be reused: every navigation
+        // ships and reparses the same bytes. 'auto' inlines what is small enough
+        // to stay off the critical path and emits the rest as a hashed file that
+        // the `/_astro/*` rule in `_headers` caches for a year — so the second
+        // page onwards costs nothing, the way fonts and images already behave.
+        build: { inlineStylesheets: 'auto' },
         vite: {
             plugins: [tailwindcss()],
         },
