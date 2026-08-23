@@ -35,12 +35,30 @@ function renderMarks(text: string, marks?: RichTextNode['marks']): string {
     }, text);
 }
 
+// Every node type that carries meaning without text has to be named here, or
+// the block below throws it away. Today there is none — the editor only stores
+// text, breaks and the blocks that wrap them.
+function hasText(node: RichTextNode): boolean {
+    if (node.type === 'text') {
+        return (node.text ?? '').trim() !== '';
+    }
+    return (node.content ?? []).some(hasText);
+}
+
 function renderNode(node: RichTextNode): string {
     if (node.type === 'text') {
         return renderMarks(escapeHtml(node.text ?? ''), node.marks);
     }
     if (node.type === 'hardBreak') {
         return '<br />';
+    }
+    // An empty block is a keystroke, not content. TipTap stores the blank line
+    // a client leaves behind while typing, and `<p></p>` on the page is a block
+    // of no height that still claims its margin — so the gap it opens is
+    // neither the blank line the editor showed nor the rhythm the design set.
+    // Spacing is CSS; the markup carries only what was written.
+    if (!hasText(node)) {
+        return '';
     }
 
     const inner = (node.content ?? []).map(renderNode).join('');

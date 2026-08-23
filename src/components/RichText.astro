@@ -10,4 +10,43 @@ const { value, class: className } = Astro.props;
 const html = renderRichText(value);
 ---
 
-{html && <div class={className} set:html={html} />}
+{html && <div class:list={['nk-richtext', className]} set:html={html} />}
+
+{/*
+  A baseline for every block the editor can produce, because Tailwind's
+  preflight strips the browser's own: without it a bullet list renders with no
+  marker and no indent, and a design that styles only `p` leaves a paragraph
+  after a list flush against it. No site should have to remember this by hand.
+
+  In `@layer base` on purpose, and that layer does the whole job: it sits before
+  `utilities`, so any utility a project puts on the wrapper wins whatever its
+  specificity — while unlayered CSS would beat every utility and take the
+  override away. Inside the layer specificity still counts, so these selectors
+  have to outrank preflight's bare `ul`/`ol` — hence no `:where()`.
+*/}
+<style is:global>
+    @layer base {
+        .nk-richtext > * + * {
+            margin-top: 1em;
+        }
+
+        .nk-richtext ul {
+            list-style: disc;
+            padding-inline-start: 1.5em;
+        }
+
+        .nk-richtext ol {
+            list-style: decimal;
+            padding-inline-start: 1.5em;
+        }
+
+        .nk-richtext li + li {
+            margin-top: 0.25em;
+        }
+
+        .nk-richtext blockquote {
+            border-inline-start: 2px solid currentColor;
+            padding-inline-start: 1em;
+        }
+    }
+</style>
