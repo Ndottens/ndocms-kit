@@ -1,0 +1,116 @@
+---
+import { langFromLocale, t } from '../lib/i18n';
+import type { SiteConfig } from '../lib/site-config';
+
+// A button that returns the reader to the top of a long page. The mechanics are
+// the same on every site — appear after a screen of scrolling, scroll back
+// smoothly, stay out of the tab order while hidden — so they live here; the
+// shape is design and comes from the project through `class` and the slot.
+//
+// Rendering it at all is the project's choice: a site that wants it puts one in
+// its SiteLayout, a site that doesn't leaves it out. There is nothing to switch
+// off in the kit.
+
+interface Props {
+    site: SiteConfig;
+    /** Extra classes for the button: position, size, color, radius, shadow. */
+    class?: string;
+    /** Accessible name. Defaults to the site language's "back to top". */
+    label?: string;
+    /**
+     * How far down the button appears, in pixels. Defaults to one viewport: on
+     * a page that barely scrolls it never shows up, which is the point.
+     */
+    showAfter?: number;
+}
+
+const { site, class: className, label, showAfter } = Astro.props;
+const buttonLabel = label ?? t(langFromLocale(site.locale), 'action.backToTop');
+---
+
+<button
+    type="button"
+    data-nk-to-top
+    data-show-after={showAfter}
+    class={className}
+    aria-label={buttonLabel}
+    title={buttonLabel}
+>
+    <slot />
+</button>
+
+{/*
+  The hidden state is behaviour, not decoration: `visibility` takes the button
+  out of the tab order too, so a screen reader and a keyboard never land on a
+  control that isn't there. A project that styles only the visible state still
+  gets that for free.
+
+  In `@layer base` for the same reason as the rich-text baseline: the layer sits
+  before `utilities`, so any utility the project passes in `class` wins whatever
+  its specificity — while unlayered CSS would beat every utility and take the
+  override away.
+*/}
+<style is:global>
+    @layer base {
+        [data-nk-to-top] {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 40;
+            opacity: 0;
+            visibility: hidden;
+            translate: 0 0.5rem;
+            transition:
+                opacity 200ms ease,
+                translate 200ms ease,
+                visibility 200ms;
+        }
+
+        [data-nk-to-top][data-visible] {
+            opacity: 1;
+            visibility: visible;
+            translate: 0 0;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            [data-nk-to-top] {
+                translate: none;
+                transition: none;
+            }
+        }
+    }
+</style>
+
+<script is:inline>
+    (() => {
+        const button = document.querySelector('[data-nk-to-top]');
+        if (!button) return;
+
+        const parsed = Number(button.dataset.showAfter);
+        const threshold = () => (Number.isFinite(parsed) && parsed > 0 ? parsed : window.innerHeight);
+
+        let visible = false;
+        const sync = () => {
+            const next = window.scrollY > threshold();
+            if (next === visible) return;
+            visible = next;
+            button.toggleAttribute('data-visible', next);
+        };
+
+        button.addEventListener('click', () => {
+            const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            window.scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+            // Smooth scrolling keeps running after the click, so moving focus has
+            // to wait for the top: parking it on <body> mid-scroll makes some
+            // browsers jump. The header is where the reader now is, so hand the
+            // keyboard back to the start of the document.
+            document.body.setAttribute('tabindex', '-1');
+            document.body.focus({ preventScroll: true });
+            document.body.removeAttribute('tabindex');
+        });
+
+        sync();
+        window.addEventListener('scroll', sync, { passive: true });
+        window.addEventListener('resize', sync, { passive: true });
+    })();
+</script>

@@ -13,10 +13,11 @@ fixtures); al het onderliggende komt uit deze kit:
 | `ndocms-kit/lib/types` | `DeliveryDocument`, `SliceInstance`, `RichTextNode`, `ImageValue` |
 | `ndocms-kit/lib/site-config` | `SiteConfig`/`BusinessInfo` (contract voor `src/site.ts`) |
 | `ndocms-kit/lib/design` | `DividerStyle` (contract voor `src/design.ts`) |
-| `ndocms-kit/components/SliceZone.astro` | Slice-rendering: ritme, dividers, ankers — props `{ slices, registry, dividerStyle }` |
+| `ndocms-kit/components/SliceZone.astro` | Slice-rendering: ritme, dividers, ankers, sticky chrome (`sections.stickyFor`) — props `{ slices, registry, dividerStyle, sections }` |
 | `ndocms-kit/components/Img.astro` | Beeld met CLS-attributen, focuspunt, fit en beeldvorm |
 | `ndocms-kit/components/RichText.astro` | Structured-text rendering |
 | `ndocms-kit/components/Icon.astro` | Icon-catalogus (site mag lokaal shadowen) |
+| `ndocms-kit/components/BackToTop.astro` | Terug-naar-boven-knop: verschijnt na een schermhoogte, respecteert reduced motion — vorm via `class` + slot, rendert alleen waar het project hem neerzet |
 | `ndocms-kit/components/SectionDivider.astro` | Sectie-overgangen (gebruikt door SliceZone) |
 | `ndocms-kit/layouts/Base.astro` | `<head>`/SEO/JSON-LD — props `{ site, title, … }` + named slot `head` voor fonts; wordt gewikkeld door de per-site `SiteLayout.astro` |
 
