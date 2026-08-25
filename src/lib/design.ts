@@ -61,8 +61,29 @@ export interface SectionPlan {
      * A sticky section keeps its space in the flow, so nothing below it shifts;
      * it does jump above the descending z-index of the other sections, because
      * it now scrolls over them.
+     *
+     * A sticky section also gives the page two scroll states, because a bar
+     * that follows the page down has to answer for the content it now covers:
+     * every element carrying `data-nk-scroll-state` gets `data-scrolled` once
+     * the page has left the top, and `data-past-opener` once the first content
+     * section has disappeared behind the bar. What that looks like — a fill
+     * appearing, a logo swapping colour, nothing at all — is the project's,
+     * and it styles it with `data-[scrolled]:` utilities. An element without
+     * the attribute never hears about it.
      */
     stickyFor?: StickyResolver;
+    /**
+     * Let the first content section start *underneath* the sticky chrome
+     * instead of below it, so a full-bleed opener runs edge to edge behind a
+     * transparent bar.
+     *
+     * The zone pulls that section up by `--nk-chrome-h` (5rem unless the
+     * project says otherwise on `:root`). Keeping its own content clear of the
+     * bar stays the section's job — its top padding has to sit inside the
+     * section, because the section's background is what fills the strip behind
+     * the bar; padding on the wrapper would leave that strip empty.
+     */
+    overlayChrome?: boolean;
 }
 
 /**

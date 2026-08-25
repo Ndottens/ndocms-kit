@@ -13,7 +13,7 @@ fixtures); al het onderliggende komt uit deze kit:
 | `ndocms-kit/lib/types` | `DeliveryDocument`, `SliceInstance`, `RichTextNode`, `ImageValue` |
 | `ndocms-kit/lib/site-config` | `SiteConfig`/`BusinessInfo` (contract voor `src/site.ts`) |
 | `ndocms-kit/lib/design` | `DividerStyle` (contract voor `src/design.ts`) |
-| `ndocms-kit/components/SliceZone.astro` | Slice-rendering: ritme, dividers, ankers, sticky chrome (`sections.stickyFor`) — props `{ slices, registry, dividerStyle, sections }` |
+| `ndocms-kit/components/SliceZone.astro` | Slice-rendering: ritme, dividers, ankers, meescrollende chrome (`sections.stickyFor`, `sections.overlayChrome`, scroll-toestanden) — props `{ slices, registry, dividerStyle, sections }` |
 | `ndocms-kit/components/Img.astro` | Beeld met CLS-attributen, focuspunt, fit en beeldvorm |
 | `ndocms-kit/components/RichText.astro` | Structured-text rendering |
 | `ndocms-kit/components/Icon.astro` | Icon-catalogus (site mag lokaal shadowen) |
@@ -32,6 +32,58 @@ fixtures); al het onderliggende komt uit deze kit:
 /* globale CSS — Tailwind v4 scant node_modules niet vanzelf */
 @source "../../node_modules/ndocms-kit";
 ```
+
+## Meescrollende chrome: de balk weet waar je bent
+
+Zodra een sectie meescrolt (`sections.stickyFor`) zet de SliceZone twee
+onzichtbare markers in de pagina en zet hij op **elk element met
+`data-nk-scroll-state`** twee attributen:
+
+| Attribuut | Wanneer |
+|---|---|
+| `data-scrolled` | je hebt een balkhoogte gescrold — de pagina staat niet meer bovenaan |
+| `data-past-opener` | de eerste inhoudssectie is achter de balk verdwenen |
+
+Wat er dan verandert is design en staat dus in het project — de kit kiest geen
+kleur:
+
+```astro
+<header
+    data-nk-scroll-state
+    class="bg-transparent transition-colors duration-200 data-[scrolled]:bg-surface/95 data-[scrolled]:backdrop-blur-md data-[scrolled]:shadow-sm"
+>
+```
+
+Kinderen van de balk kantelen mee via `group/chrome` op de header en
+`group-data-[scrolled]/chrome:text-ink` — **voluit geschreven**, want Tailwind
+leest dit bestand als tekst en houdt alleen wat het letterlijk ziet; een variant
+die je uit stukjes samenstelt wordt gepurged.
+
+Neem `data-scrolled` tenzij je een goede reden hebt voor de andere: zodra de
+pagina beweegt schuift er inhoud onder de balk door, en dáár wil je hem niet
+meer doorzichtig hebben. `data-past-opener` is voor het geval dat de balk over
+de héle opener onzichtbaar moet blijven — mooi bij een beeldvullende hero,
+maar tot dat punt scrolt je inhoud wel door een transparante balk.
+
+Geen element met `data-nk-scroll-state`? Dan verandert er niets, en een site
+zonder meescrollende sectie krijgt de markers en het script niet eens. De balk
+mag van de wissel niet hóger worden: een `border-b` die er tijdens het scrollen
+bij komt duwt de hele pagina een pixel omlaag — gebruik een lijn die op
+`opacity` schakelt.
+
+**Volle breedte onder de balk door** (`sections.overlayChrome: true`) laat de
+eerste inhoudssectie *onder* de chrome beginnen in plaats van eronder. De kit
+trekt die sectie omhoog; het vrijhouden van de eigen inhoud blijft werk van de
+sectie zelf, want haar achtergrond moet de strook achter de balk vullen:
+
+```astro
+<section class="pt-[calc(var(--nk-chrome-h)+4rem)] pb-20">
+```
+
+`--nk-chrome-h` is de hoogte van de balk. De kit rekent met 5rem; is jouw balk
+anders, zet hem dan in `tokens.css` op `:root`. Hij bepaalt ook waar een anker
+landt en wanneer `data-past-opener` omslaat, dus een verkeerde waarde zie je
+meteen.
 
 ## Beelden: wat de editor per plek bepaalt
 

@@ -1,0 +1,60 @@
+---
+// The runtime behind the scroll markers the SliceZone places around a sticky
+// section. It draws nothing: it watches those markers and hands the answer to
+// every element carrying `data-nk-scroll-state`, as `data-scrolled` (the page
+// has left the top: you have scrolled a bar's height) and `data-past-opener`
+// (the first content section is behind the bar).
+//
+// So the mechanics are the same on every site and the reaction is not: a
+// project styles a bar that has to earn a background halfway down with
+// `data-[scrolled]:bg-…`, and a project that wants nothing to change leaves the
+// attribute off and never notices this file.
+//
+// The markers themselves are placed by the SliceZone, which also renders this
+// script when a section is sticky. Sites import neither.
+---
+
+<script is:inline>
+    (() => {
+        if (window.__nkScrollState) return;
+        window.__nkScrollState = true;
+
+        const states = new Map();
+        const watched = new WeakSet();
+
+        const apply = () => {
+            document.querySelectorAll('[data-nk-scroll-state]').forEach((el) => {
+                states.forEach((passed, name) => el.toggleAttribute(`data-${name}`, passed));
+            });
+        };
+
+        const watch = (marker) => {
+            const name = marker.dataset.nkScrollMarker;
+            if (!name || watched.has(marker)) return;
+            watched.add(marker);
+            if (!states.has(name)) states.set(name, false);
+
+            new IntersectionObserver(([entry]) => {
+                // Above the viewport, not below it: a marker further down the
+                // page is out of view as well, and that is the opposite of
+                // passed. The observer reports once on its own the moment it
+                // starts, so a page opened halfway down is right immediately.
+                const passed = !entry.isIntersecting && entry.boundingClientRect.top < 0;
+                if (states.get(name) === passed) return;
+                states.set(name, passed);
+                apply();
+            }).observe(marker);
+        };
+
+        const scan = () => {
+            document.querySelectorAll('[data-nk-scroll-marker]').forEach(watch);
+            apply();
+        };
+
+        // Runs where it stands, so the bar above it never flashes the wrong
+        // colour; a second slice zone or a footer further down the page only
+        // exists once the document is parsed.
+        scan();
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan);
+    })();
+</script>

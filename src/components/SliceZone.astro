@@ -1,4 +1,5 @@
 ---
+import ScrollState from './ScrollState.astro';
 import SectionDivider from './SectionDivider.astro';
 import {
     chromeIsDark,
@@ -71,7 +72,7 @@ const resolved = slices
         // slice can hold the LCP element, and a component cannot see its own
         // position. Without this every image below a hero-less page top loads
         // lazily, however far above the fold it sits.
-        return { ...r, divider, dividerFrom: prev?.surface, dividerFlip: flip, dividerShape, z: all.length - i, index: i, first: i === 0 };
+        return { ...r, divider, dividerFrom: prev?.surface, dividerFlip: flip, dividerShape, z: all.length - i, index: i, first: i === 0, overlay: false };
     });
 
 // Sections render in the order the editor put them in. The <main> landmark
@@ -88,10 +89,60 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
 // (the blog and faq detail routes split their zone around a hand-written
 // header), whose counters start over at 1.
 const STICKY_Z = 100;
-const wrapperClass = (r: { sticky: boolean }) => (r.sticky ? 'sticky top-0 scroll-mt-20' : 'relative scroll-mt-20');
-const wrapperStyle = (r: { sticky: boolean; z: number }) => `z-index: ${r.sticky ? STICKY_Z : r.z}`;
+
+// Scroll state and overlap only mean something under a bar that follows the
+// page down, so both hang off the same sticky chrome. A zone without one is
+// rendered exactly as before: no markers, no script, no negative margin.
+const stickyAbove = before.some((r) => r.sticky);
+const hasSticky = stickyAbove || content.some((r) => r.sticky) || after.some((r) => r.sticky);
+
+// The opener slides under the bar instead of starting below it. The section
+// keeps its own top padding — it has to, because its background is what fills
+// the strip behind the bar, and padding on this wrapper would leave that strip
+// showing the page underneath.
+if (sections?.overlayChrome && stickyAbove && content.length > 0) {
+    content[0].overlay = true;
+    // A divider draws the seam between two sections; here there is no seam left
+    // to draw, because the bar is standing on top of the opener.
+    content[0].divider = false;
+}
+
+// Two markers, both a strip of nothing: the first says the page has left the
+// top, the second says the opener is behind the bar. What that should look like
+// is the project's business — it puts `data-nk-scroll-state` on whatever has to
+// react and styles the `data-scrolled` / `data-past-opener` it gets back.
+// Without such an element the markers are watched and nothing happens.
+const openerMarkerAfterChrome = hasSticky && content.length === 0;
+
+// A marker's own geometry, and it stays on the marker: this is the threshold,
+// not decoration, and a stylesheet that ends up in another bundle than the page
+// loads would take it away without a word.
+//
+// Each gives back exactly the space it takes. `scrolled` is a bar tall, so it
+// turns over after a bar's worth of scrolling instead of after one pixel — a
+// page nudged two pixels has not left the top, and a bar that flickers on a
+// trackpad twitch is worse than one that waits. `past-opener` is a hairline
+// offset upwards by that same height, because the end of the opener is covered
+// a bar's height before it reaches the top of the viewport; a relative offset
+// moves the box the observer measures without touching the layout.
+const CHROME_H = 'var(--nk-chrome-h, 5rem)';
+const markerStyle = (name: 'scrolled' | 'past-opener') =>
+    name === 'scrolled'
+        ? `position: relative; pointer-events: none; height: ${CHROME_H}; margin-bottom: calc(${CHROME_H} * -1)`
+        : `position: relative; pointer-events: none; height: 1px; margin-bottom: -1px; top: calc(${CHROME_H} * -1)`;
+
+const wrapperClass = (r: { sticky: boolean }) => (r.sticky ? 'sticky top-0' : 'relative');
+const wrapperStyle = (r: { sticky: boolean; z: number; overlay: boolean }) =>
+    [
+        `z-index: ${r.sticky ? STICKY_Z : r.z}`,
+        // An anchor has to land below the bar, not behind it.
+        'scroll-margin-top: var(--nk-chrome-h, 5rem)',
+        ...(r.overlay ? ['margin-top: calc(var(--nk-chrome-h, 5rem) * -1)'] : []),
+    ].join('; ');
 ---
 
+{hasSticky && <div data-nk-scroll-marker="scrolled" aria-hidden="true" style={markerStyle('scrolled')} />}
+{openerMarkerAfterChrome && <div data-nk-scroll-marker="past-opener" aria-hidden="true" style={markerStyle('past-opener')} />}
 {
     before.map((r) => (
         <>
@@ -105,12 +156,13 @@ const wrapperStyle = (r: { sticky: boolean; z: number }) => `z-index: ${r.sticky
 {
     content.length > 0 && (
         <main>
-            {content.map((r) => (
+            {content.map((r, i) => (
                 <>
                     {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
                     <div id={r.anchorId} data-ndocms-slice={r.slice.id} class={wrapperClass(r)} style={wrapperStyle(r)}>
                         <r.Component slice={r.slice} surface={r.surface} index={r.index} first={r.first} />
                     </div>
+                    {hasSticky && i === 0 && <div data-nk-scroll-marker="past-opener" aria-hidden="true" style={markerStyle('past-opener')} />}
                 </>
             ))}
         </main>
@@ -126,3 +178,5 @@ const wrapperStyle = (r: { sticky: boolean; z: number }) => `z-index: ${r.sticky
         </>
     ))
 }
+
+{hasSticky && <ScrollState />}
