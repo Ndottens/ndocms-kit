@@ -39,6 +39,14 @@ export type ChromePredicate = (slice: SliceInstance) => boolean;
  */
 export type SurfaceResolver = (slice: SliceInstance) => Surface | null;
 
+/**
+ * Which sections stay in view while the page scrolls (a sticky navigation)?
+ * The mechanics have to live here: a section can only stick inside its own
+ * wrapper, and that wrapper is exactly as tall as the section, so a `sticky`
+ * class inside a slice component does nothing.
+ */
+export type StickyResolver = (slice: SliceInstance) => boolean;
+
 export interface SectionPlan {
     chrome?: ChromePredicate;
     surfaceFor?: SurfaceResolver;
@@ -48,6 +56,13 @@ export interface SectionPlan {
      * dividerStyle. Lets one transition be organic while the rest stay quiet.
      */
     dividerFor?: (from: Surface, to: Surface, next: SliceInstance) => DividerStyle | CustomDivider | null;
+    /**
+     * Which sections stick to the top of the viewport while the page scrolls.
+     * A sticky section keeps its space in the flow, so nothing below it shifts;
+     * it does jump above the descending z-index of the other sections, because
+     * it now scrolls over them.
+     */
+    stickyFor?: StickyResolver;
 }
 
 /**

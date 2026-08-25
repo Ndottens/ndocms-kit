@@ -29,6 +29,7 @@ const { slices, registry, dividerStyle, sections } = Astro.props;
 
 const chrome = sections?.chrome ?? isChrome;
 const surfaceFor = sections?.surfaceFor ?? chromeIsDark;
+const stickyFor = sections?.stickyFor ?? (() => false);
 
 // Auto-rhythm: alternate the neutral sections so two identical backgrounds
 // never sit next to each other. A section with a fixed surface sits outside the
@@ -49,7 +50,7 @@ const resolved = slices
         }
         // Anchor target for section links: slice-instance id with '$' -> '-'.
         const anchorId = typeof slice.id === 'string' && slice.id !== '' ? slice.id.replace('$', '-') : undefined;
-        return { slice, surface, anchorId, Component: registry[slice.sliceType] };
+        return { slice, surface, anchorId, sticky: stickyFor(slice), Component: registry[slice.sliceType] };
     })
     // Dividers are computed over the whole list, before the <main> split below.
     // Each wrapper also gets a descending z-index: an earlier section always
@@ -80,13 +81,22 @@ const resolved = slices
 // content lands inside <main>; that is valid HTML and reads as navigation or a
 // footer scoped to that content.
 const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome);
+
+// A sticky section scrolls over the sections below it, so the descending
+// z-index of the rhythm would bury it — it sits above the whole stack instead.
+// It also has to beat sections rendered by a *second* SliceZone on the same page
+// (the blog and faq detail routes split their zone around a hand-written
+// header), whose counters start over at 1.
+const STICKY_Z = 100;
+const wrapperClass = (r: { sticky: boolean }) => (r.sticky ? 'sticky top-0 scroll-mt-20' : 'relative scroll-mt-20');
+const wrapperStyle = (r: { sticky: boolean; z: number }) => `z-index: ${r.sticky ? STICKY_Z : r.z}`;
 ---
 
 {
     before.map((r) => (
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
-            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
+            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class={wrapperClass(r)} style={wrapperStyle(r)}>
                 <r.Component slice={r.slice} surface={r.surface} index={r.index} first={r.first} />
             </div>
         </>
@@ -98,7 +108,7 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
             {content.map((r) => (
                 <>
                     {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
-                    <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
+                    <div id={r.anchorId} data-ndocms-slice={r.slice.id} class={wrapperClass(r)} style={wrapperStyle(r)}>
                         <r.Component slice={r.slice} surface={r.surface} index={r.index} first={r.first} />
                     </div>
                 </>
@@ -110,7 +120,7 @@ const { before, content, after } = splitChrome(resolved, (r) => r.slice, chrome)
     after.map((r) => (
         <>
             {r.divider && <SectionDivider from={r.dividerFrom!} to={r.surface} style={r.dividerShape} flip={r.dividerFlip} />}
-            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class="relative scroll-mt-20" style={`z-index: ${r.z}`}>
+            <div id={r.anchorId} data-ndocms-slice={r.slice.id} class={wrapperClass(r)} style={wrapperStyle(r)}>
                 <r.Component slice={r.slice} surface={r.surface} index={r.index} first={r.first} />
             </div>
         </>
