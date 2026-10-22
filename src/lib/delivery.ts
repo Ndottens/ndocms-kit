@@ -1,5 +1,6 @@
 import type { DeliveryDocument } from './types';
 import sample from './fixture.json';
+import { deliveryHeaders } from './request';
 
 let API_URL: string | undefined = import.meta.env.NDOCMS_API_URL;
 let SITE_SLUG: string | undefined = import.meta.env.NDOCMS_SITE_SLUG;
@@ -83,15 +84,7 @@ function snapshotDocuments(): Promise<DeliveryDocument[] | null> {
 }
 
 function headers(): HeadersInit {
-    return {
-        Authorization: `Bearer ${API_KEY}`,
-        Accept: 'application/json',
-        // Node's default fetch fingerprint (bare UA, minimal headers) trips
-        // Imunify360's bot heuristics on the shared-hosting CMS server; a
-        // browser-like fingerprint gets build machines through more reliably.
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Accept-Language': 'nl,en;q=0.8',
-    };
+    return deliveryHeaders(API_KEY!);
 }
 
 function base(): string {
@@ -246,6 +239,34 @@ export async function getAllDocuments(type = 'landing_page'): Promise<DeliveryDo
     }
 
     return documents;
+}
+
+/**
+ * getStaticPaths for a page.astro under src/custom-types/<type>/: one page per
+ * published document of that type, with the document as a prop.
+ */
+export async function documentPaths(type: string): Promise<Array<{ params: { uid: string }; props: { document: DeliveryDocument } }>> {
+    const documents = await getAllDocuments(type);
+
+    return documents.map((document) => ({
+        params: { uid: document.uid },
+        props: { document },
+    }));
+}
+
+// Where a document lives on the site, as the CMS says. The fallback only
+// serves the fixture, whose landing pages carry no url: content from a CMS
+// without one predates per-site prefixes, and guessing would build links
+// without the prefix.
+export function documentUrl(document: DeliveryDocument): string {
+    if (document.url !== undefined && document.url !== null) {
+        return document.url;
+    }
+    if (configured && document.url === undefined) {
+        throw new Error(`Document "${document.uid}" has no url: the content predates per-site URL prefixes. Publish a release in the CMS to refresh it.`);
+    }
+
+    return document.is_homepage ? '/' : `/${document.uid}`;
 }
 
 export async function getDocument(uid: string): Promise<DeliveryDocument | null> {

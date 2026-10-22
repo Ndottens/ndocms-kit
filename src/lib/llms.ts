@@ -1,7 +1,7 @@
 // Generates /llms.txt (llmstxt.org): a plain-markdown index of the site for
 // AI assistants and LLM crawlers — robots.txt's "who may crawl" counterpart
 // for "what is this site and where is the important content".
-import { getAllDocuments } from './delivery';
+import { documentUrl, getAllDocuments } from './delivery';
 import { pageSeo } from './seo';
 import type { DeliveryDocument } from './types';
 import type { SiteConfig } from './site-config';
@@ -31,7 +31,7 @@ function line(document: DeliveryDocument, url: string): string {
 
 export async function buildLlmsTxt(site: SiteConfig, origin: string | undefined): Promise<string> {
     const base = origin ?? '/';
-    const abs = (path: string) => new URL(path, base).href;
+    const abs = (document: DeliveryDocument) => new URL(documentUrl(document).replace(/\/?$/, '/'), base).href;
 
     const pages = (await getAllDocuments('landing_page')).filter((document) => !isHidden(document));
     const posts = (await getAllDocuments('blog_page')).filter((document) => !isHidden(document));
@@ -43,11 +43,11 @@ export async function buildLlmsTxt(site: SiteConfig, origin: string | undefined)
         '',
         '## Pagina’s',
         '',
-        ...pages.map((document) => line(document, abs(document.is_homepage ? '/' : `/${document.uid}/`))),
+        ...pages.map((document) => line(document, abs(document))),
     ];
 
     if (posts.length > 0) {
-        sections.push('', '## Blog', '', ...posts.map((document) => line(document, abs(`/blog/${document.uid}/`))));
+        sections.push('', '## Blog', '', ...posts.map((document) => line(document, abs(document))));
     }
 
     return sections.join('\n') + '\n';

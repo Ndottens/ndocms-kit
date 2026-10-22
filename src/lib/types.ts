@@ -3,6 +3,9 @@ export interface DeliveryDocument {
     id: number;
     uid: string;
     type: string;
+    // The path on the site, with this site's URL prefix. Null for singletons
+    // (navigation, footer): they are not pages.
+    url?: string | null;
     is_homepage?: boolean;
     tags: string[];
     lang: string;

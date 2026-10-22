@@ -1,6 +1,9 @@
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AstroIntegration } from 'astro';
+import type { AstroIntegration, AstroIntegrationLogger, InjectedRoute } from 'astro';
+import { loadEnv } from 'vite';
+import { fallbackUrlPrefix, loadUrlPrefixes } from './url-prefixes';
 
 // The base routes live in this package so every client site shares them instead
 // of carrying its own copy. They need three things from the project — the
@@ -31,13 +34,61 @@ const DEFAULTS = {
     site: 'src/site.ts',
 };
 
+const CUSTOM_TYPES_DIR = 'src/custom-types';
+
+/**
+ * The pages of a routed custom type live in src/custom-types/<api_id>/:
+ * page.astro renders one document, index.astro the overview. They are mounted
+ * under the prefix the CMS has for this site, so the folder names the type and
+ * never the URL — a site that moves /faq to /fragen changes nothing here.
+ */
+async function injectCustomTypeRoutes(
+    root: string,
+    mode: string,
+    injectRoute: (route: InjectedRoute) => void,
+    logger: AstroIntegrationLogger,
+): Promise<void> {
+    const dir = path.join(root, CUSTOM_TYPES_DIR);
+    if (!existsSync(dir)) {
+        return;
+    }
+
+    const types = readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    if (types.length === 0) {
+        return;
+    }
+
+    const prefixes = await loadUrlPrefixes(loadEnv(mode, root, 'NDOCMS_'));
+
+    for (const type of types) {
+        const prefix = prefixes ? prefixes[type] : fallbackUrlPrefix(type);
+        if (!prefix) {
+            throw new Error(
+                `${CUSTOM_TYPES_DIR}/${type}: the CMS has no URL prefix for "${type}". The folder must carry the api_id of a custom type with a url_prefix.`,
+            );
+        }
+
+        const page = path.join(dir, type, 'page.astro');
+        const index = path.join(dir, type, 'index.astro');
+        if (existsSync(page)) {
+            injectRoute({ pattern: `/${prefix}/[uid]`, entrypoint: page });
+        }
+        if (existsSync(index)) {
+            injectRoute({ pattern: `/${prefix}`, entrypoint: index });
+        }
+        logger.info(`${type} → /${prefix}${prefixes ? '' : ' (fixture)'}`);
+    }
+}
+
 export function ndocmsBase(options: NdocmsBaseOptions = {}): AstroIntegration {
     const routes = { landing: true, robots: true, llms: true, preview: true, ...options.routes };
 
     return {
         name: 'ndocms-base',
         hooks: {
-            'astro:config:setup': ({ config, injectRoute, updateConfig }) => {
+            'astro:config:setup': async ({ config, command, injectRoute, updateConfig, logger }) => {
                 const root = fileURLToPath(config.root);
                 const resolve = (key: keyof typeof DEFAULTS) =>
                     path.resolve(root, options[key] ?? DEFAULTS[key]);
@@ -54,6 +105,8 @@ export function ndocmsBase(options: NdocmsBaseOptions = {}): AstroIntegration {
                         },
                     },
                 });
+
+                await injectCustomTypeRoutes(root, command === 'dev' ? 'development' : 'production', injectRoute, logger);
 
                 if (routes.landing) {
                     injectRoute({ pattern: '/[...uid]', entrypoint: 'ndocms-kit/routes/landing.astro' });

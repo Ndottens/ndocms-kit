@@ -5,7 +5,7 @@ fixtures); al het onderliggende komt uit deze kit:
 
 | Import | Wat |
 |---|---|
-| `ndocms-kit/lib/delivery` | Content ophalen: R2-snapshots → fixture → Delivery API (fallback), `submissionsEndpoint()`, `bookingEndpoints()`, `getBookingCatalog()` |
+| `ndocms-kit/lib/delivery` | Content ophalen: R2-snapshots → fixture → Delivery API (fallback), `documentPaths()`/`documentUrl()` voor custom-type-pagina's, `submissionsEndpoint()`, `bookingEndpoints()`, `getBookingCatalog()` |
 | `ndocms-kit/lib/forms` | `setupForms()` — formulier-wiring (honeypot, Turnstile, statusmeldingen) |
 | `ndocms-kit/lib/booking` | `setupBooking()` — boekingswizard (dienst → dag → slot → aanvraag) |
 | `ndocms-kit/lib/turnstile` | Gedeelde Turnstile-helpers |
@@ -31,6 +31,22 @@ fixtures); al het onderliggende komt uit deze kit:
 ```css
 /* globale CSS — Tailwind v4 scant node_modules niet vanzelf */
 @source "../../node_modules/ndocms-kit";
+```
+
+## Custom-type-pagina's: de URL komt uit het CMS
+
+`ndocmsBase()` mount alles onder `src/custom-types/<api_id>/` onder de prefix die
+het CMS voor dát type op déze site heeft — `page.astro` op `/<prefix>/[uid]`,
+`index.astro` op `/<prefix>`. De prefixen komen uit `site.json` in de snapshot,
+anders uit `GET /v1/sites/{slug}/site`; zonder CMS (fixture) uit de api_id
+(`faq_page` → `faq`). Kent het CMS een map niet, dan faalt de build.
+
+```astro
+---
+import { documentPaths, documentUrl } from 'ndocms-kit/lib/delivery';
+export const getStaticPaths = () => documentPaths('faq_page');
+---
+<a href={documentUrl(other)}>…</a>
 ```
 
 ## Meescrollende chrome: de balk weet waar je bent
